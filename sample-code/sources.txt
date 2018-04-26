@@ -1,0 +1,1 @@
+min-char-mn.py comes from https://gist.github.com/karpathy/d4dee566867f8291f086 (referenced in http://karpathy.github.io/2015/05/21/rnn-effectiveness/)
