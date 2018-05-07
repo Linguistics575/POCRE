@@ -22,6 +22,7 @@ D bear
 
 GP EDITS:
 added CER calculation
+added '=' (as null character) for padding instead of default ' ' in horizontal alignment output
 '''
 import argparse
 from collections import OrderedDict
@@ -329,7 +330,7 @@ class WERCalculator():
                 orientation of printout. 'horizontal' will insert new lines
                 at about 70 characters across.
         '''
-        assert orient == 'horizontal' or orient == 'vertical'
+        assert orient == 'horizontal' or orient == 'vertical' or orient == 'hypo' #GP EDIT: add third 'hypo' condition
 
         if not hasattr(self, 'align_ref_elements'):
             self.set_diff_stats(prepare_alignment=True)
@@ -344,21 +345,23 @@ class WERCalculator():
         if orient == 'horizontal':
             # we'll need to pad things to elements line up nicely horizontally
 
-            # list of the maxiumum lengths of  (reference, hypothesis, label)
+            # list of the maximumum lengths of  (reference, hypothesis, label)
             max_lengths = [max(map(len, e)) for e
                            in zip(self.align_ref_elements,
                                   self.align_hypothesis_elements,
                                   self.align_label_str)]
 
+            null_char_list = ['='] * len(max_lengths)  #GP EDIT (iterable of '=' to use as fill character for padding below)
+
             # list of reference elements with padding appropriate for printing
             padded_ref_elements = list(map(str.ljust,
                                            self.align_ref_elements,
-                                           max_lengths))
+                                           max_lengths, null_char_list))  # GP EDIT: added '=' as replacement character
 
             # list of hypothesis elements with padding appropriate for printing
             padded_hyp_elements = list(map(str.ljust,
                                            self.align_hypothesis_elements,
-                                           max_lengths))
+                                           max_lengths, null_char_list))  # GP EDIT: added '=' as replacement character
 
             # list of label elements with padding appropriate for printing
             padded_label_elements = list(map(str.ljust,
@@ -378,7 +381,7 @@ class WERCalculator():
                 end_index = breakpoints[0]
                 print(" ".join(padded_ref_elements[start_index:end_index]))
                 print(" ".join(padded_hyp_elements[start_index:end_index]))
-                print(" ".join(padded_label_elements[start_index:end_index]))
+                # print(" ".join(padded_label_elements[start_index:end_index]))  #GP EDIT (comment out)
                 print("")
 
                 # iterate through the rest and print the lines
@@ -386,7 +389,7 @@ class WERCalculator():
                                                     for i in range(2)]):
                     print(" ".join(padded_ref_elements[start_index:end_index]))
                     print(" ".join(padded_hyp_elements[start_index:end_index]))
-                    print(" ".join(padded_label_elements[start_index:end_index]))
+                    # print(" ".join(padded_label_elements[start_index: end_index])) #GP EDIT (comment out)
                     print("")
 
                 # if there was 2 or more breakpoints, there will be an
@@ -399,9 +402,9 @@ class WERCalculator():
             # one that exists
             print(" ".join(padded_ref_elements[start_index:]))
             print(" ".join(padded_hyp_elements[start_index:]))
-            print(" ".join(padded_label_elements[start_index:]))
+            # print(" ".join(padded_label_elements[start_index:]))  GP EDIT commented this line
             print("")
-        else:
+        elif orient == 'vertical':  # GP EDIT (replaced "else": with this line)
             # we'll need to pad things to create nice columns, which means that
             # we just have to add padding to the right side of the references
 
@@ -412,10 +415,15 @@ class WERCalculator():
             # do the padding
             padded_ref_elements = list(map(lambda x: str.ljust(x, max_length),
                                            self.align_ref_elements))
-            for x in zip(self.align_label_str,
+            for x in zip(                        # GP EDIT: removed "self.align_label_str" (labels) in output (first argument to zip)
                          padded_ref_elements,
                          self.align_hypothesis_elements):
                 print(" ".join(x))
+        # GP EDITS BELOW
+        elif orient == 'hypo':
+            print("test: padded_hypothesis_elements:")
+            print(padded_hyp_elements)
+
 
 
 def process_single_pair(args, print_headers=True, return_diff_stats=False):
@@ -530,7 +538,7 @@ def process_batch(args):
                  running_total_diff_stats.num_ref_elements)
 
     total_cer = (
-                running_total_diff_stats.num_substituions + running_total_diff_stats.num_deletions + running_total_diff_stats.num_insertions) / running_total_num_ref_elements
+                running_total_diff_stats.num_substituions + running_total_diff_stats.num_deletions + running_total_diff_stats.num_insertions) / running_total_diff_stats.num_ref_elements
 
     if args.verbose:
         print("------------------------- ------ -------- -------- ------ -------- --------")
@@ -540,7 +548,7 @@ def process_batch(args):
                                                                              *running_total_diff_stats))
     else:
         print('------------------------------')
-        # print('WEIGHTED AVERAGE WER: ', total_wer)
+        # print('WEIGHTED AVERAGE WER: ', total_wer) # GP EDIT
         print('WEIGHTED AVERAGE CER: ', total_cer)
 
 
@@ -577,7 +585,7 @@ def main():
                                action='store_true',
                                default=False)
     single_parser.add_argument("--print_alignment", "-a",
-                               required=False, choices=['horizontal', 'vertical'],
+                               required=False, choices=['horizontal', 'vertical', 'hypo'], # GP EDIT
                                help="Print the aligned text horizonally or "
                                     "vertically.  vertical will be more readable "
                                     "for longer texts, but horizontal will be more "
