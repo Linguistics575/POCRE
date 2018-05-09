@@ -9,12 +9,12 @@ Based on tutorial in https://r2rt.com/recurrent-neural-networks-in-tensorflow-ii
 import numpy as np
 import tensorflow as tf
 #matplotlib inline
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import time
 import os
 import sys
-import urllib.request
-from tensorflow.models.rnn.ptb import reader
+#import urllib.request
+#from tensorflow.models.rnn.ptb import reader
 
 """
 Load and process data, utility functions
@@ -22,21 +22,35 @@ Load and process data, utility functions
         
 def get_data(file_name):
     with open(file_name,'r') as f:
-        raw_data = f.read()
-        print("Data length:", len(raw_data))
-    
-    
-    # TODO: CHANGE TO CHARACTER ALIGNMENT
-    vocab = set(raw_data)
+        count = 1
+        raw_x = str()
+        raw_y = str()
+        raw_init = str()
+        for line in f.readlines():
+            if not count == 1:
+                if count % 4 == 2:
+                    raw_y += line.strip() + '\n'
+                elif count % 4 == 3:
+                    raw_x += line.strip() + '\n'
+                elif count % 4 == 0:
+                    raw_init += line
+            count += 1
+        print("Data length:", len(raw_y))
+
+    return raw_x, raw_y
+        
+        
+def make_train_dict(raw_x, raw_y):
+    x_vocab = set(raw_x)
+    y_vocab = set(raw_y)
+    vocab = x_vocab.union(y_vocab)
     vocab_size = len(vocab)
     idx_to_vocab = dict(enumerate(vocab))
     vocab_to_idx = dict(zip(idx_to_vocab.values(), idx_to_vocab.keys()))
     
-    data = [vocab_to_idx[c] for c in raw_data]
-    del raw_data
-    return X, Y, vocab_size
-        
-
+    return idx_to_vocab, vocab_to_idx, vocab_size
+    
+    
 def reset_graph():
     if 'sess' in globals() and sess:
         sess.close()
@@ -44,10 +58,10 @@ def reset_graph():
     
     
 def build_multilayer_lstm_graph_with_dynamic_rnn(
+    num_classes, 
     state_size = 100,
-    num_classes = tr_vocab_size,
-    batch_size = 32,
-    num_steps = 200,
+    batch_size = 20, # number of characters in each input
+    num_steps = 10,
     num_layers = 3,
     learning_rate = 1e-4):
 
@@ -72,7 +86,7 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     """
     
     init_state = cell.zero_state(batch_size, tf.float32)
-    rnn_outputs, final_state = tf.nn.bidirectional_dynamic_rnn(cell, rnn_inputs, initial_state=init_state)
+    rnn_outputs, final_state = tf.nn.dynamic_rnn(cell, rnn_inputs, initial_state=init_state)
 
     with tf.variable_scope('softmax'):
         W = tf.get_variable('W', [state_size, num_classes])
@@ -84,7 +98,7 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
 
     logits = tf.matmul(rnn_outputs, W) + b
 
-    total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits, y_reshaped))
+    total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y_reshaped))
     # Different optimizer recommended by https://towardsdatascience.com/lstm-by-example-using-tensorflow-feb0c1968537
     train_step = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(total_loss)
     #train_step = tf.train.AdamOptimizer(learning_rate).minimize(total_loss)
@@ -113,31 +127,42 @@ Iterate on the raw PTB data.
   Raises:
     ValueError: if batch_size or num_steps are too high.
   """
+def data_iterator(batch_size, num_steps):
+    raw_X_data = np.array(tr_X_data, dtype=np.int32)
+    raw_Y_data = np.array(tr_Y_data, dtype=np.int32)
+
+    data_len = len(raw_X_data)
+    batch_len = data_len // batch_size
+    x_data = np.zeros([batch_size, batch_len], dtype=np.int32)
+    y_data = np.zeros([batch_size, batch_len], dtype=np.int32)
+    for i in range(batch_size):
+        start_ind = batch_len * i
+        end_ind = batch_len * (i + 1)
+        x_data[i] = raw_X_data[start_ind:end_ind]
+        y_data[i] = raw_Y_data[start_ind:end_ind]
+            
+    epoch_size = (batch_len - 1) // num_steps
+    
+    if epoch_size == 0:
+        raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
+
+    for i in range(epoch_size):
+        x = x_data[:, i*num_steps:(i+1)*num_steps]
+        y = y_data[:, i*num_steps:(i+1)*num_steps]
+        yield (x, y)
+    
+    
 def gen_epochs(n, num_steps, batch_size):
     for i in range(n):
-        raw_data = np.array(tr_data, dtype=np.int32)
-
-        data_len = len(raw_data)
-        batch_len = data_len // batch_size
-        data = np.zeros([batch_size, batch_len], dtype=np.int32)
-        for i in range(batch_size):
-            data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
-            
-        epoch_size = (batch_len - 1) // num_steps
-    
-        if epoch_size == 0:
-            raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
-
-        for i in range(epoch_size):
-            x = data[:, i*num_steps:(i+1)*num_steps]
-            y = data[:, i*num_steps+1:(i+1)*num_steps+1]
-            yield (x, y)
+        yield data_iterator(batch_size, num_steps)
         
-
-def train_network(g, num_epochs, num_steps = 200, batch_size = 32, verbose = True, save=False):
+"""
+CURRENTLY BATCHES ARE A WINDOW OF 20, FOR SLIDING WINDOW GEN_EPOCHS NEEDS TO CHANGE
+"""
+def train_network(g, num_epochs, num_steps = 10, batch_size = 20, verbose = True, save=False):
     tf.set_random_seed(2345)
     with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         training_losses = []
         for idx, epoch in enumerate(gen_epochs(num_epochs, num_steps, batch_size)):
             training_loss = 0
@@ -165,6 +190,7 @@ def train_network(g, num_epochs, num_steps = 200, batch_size = 32, verbose = Tru
     
 
 
+
 train_file = sys.argv[1]
 test_file = sys.argv[2]
 if not os.path.exists(train_file):
@@ -173,10 +199,21 @@ if not os.path.exists(train_file):
 if not os.path.exists(test_file):
     print("CANNOT FIND " + test_file)
     
-tr_X_data, tr_Y_data, tr_vocab_size = get_data(train_file)
+
+tr_raw_x, tr_raw_y = get_data(train_file)
+test_raw_x, test_raw_y = get_data(test_file)
+
+idx_vocab, vocab_idx, tr_vocab_size = make_train_dict(tr_raw_x, tr_raw_y)
+
+tr_X_data = [vocab_idx[c] for c in tr_raw_x]
+tr_Y_data = [vocab_idx[c] for c in tr_raw_y]
+
+test_X_data = [vocab_idx[c] for c in test_raw_x]
+test_Y_data = [vocab_idx[c] for c in test_raw_y]
+
 
 t = time.time()
-graph = build_multilayer_lstm_graph_with_dynamic_rnn()
+graph = build_multilayer_lstm_graph_with_dynamic_rnn(num_classes=tr_vocab_size)
 print("It took", time.time() - t, "seconds to build the graph.")
 t = time.time()
 train_network(graph, 3)
