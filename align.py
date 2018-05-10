@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 
 '''
-script to get WER, edit distance, numbers of deletions, substitutions,
-insertions, and a printed alignment between reference and hypothesis texts.
-Verbose output looks like this:
-    WER    EditDist #Substit #Delete #Insert #RefToks
-    ---    -------- -------- ------- ------- --------
-    0.7333       88       45      35       8      120
+Script to get a printed alignment between reference and hypothesis texts.
 Horizontally printed alignment looks like this:
-     Fuzzy Wuzzy was a     bear
-John Fuzzy Wuzzy had hair.
-I                S   S     D
+==== Fuzzy Wuzzy was a==== bear
+John Fuzzy Wuzzy had hair. ====
+
 Vertically printed alignment looks like this:
-I       John
-  Fuzzy Fuzzy
-  Wuzzy Wuzzy
-S was   had
-S a     hair.
-D bear
-@author Jimmy Bruno
+===== John
+Fuzzy Fuzzy
+Wuzzy Wuzzy
+was   had
+a==== hair.
+bear  ====
+
+Adapted by GP from @author Jimmy Bruno's WER.py
 
 GP EDITS:
-added CER calculation
 added '=' (as null character) for padding instead of default ' ' in horizontal alignment output
+removed labels in alignment output
+removed error rate statistics in output
+removed -verbose option
+removed -a argument so that outputting alignment is default behavior
 '''
+
 import argparse
 from collections import OrderedDict
 from itertools import chain
@@ -84,21 +84,21 @@ class StatsTuple(tuple):
         edit_distance : int
         num_deletions : int
         num_insertions :int
-        num_substituions : int
+        num_substitutions : int
         num_ref_elements :int
     '''
 
     __slots__ = ()
 
     _fields = ('edit_distance', 'num_deletions', 'num_insertions',
-               'num_substituions', 'num_ref_elements')
+               'num_substitutions', 'num_ref_elements')
 
     def __new__(_cls, edit_distance, num_deletions, num_insertions,
-                num_substituions, num_ref_elements):
+                num_substitutions, num_ref_elements):
         '''Create new instance of DiffStats(edit_distance, num_deletions,
-           num_insertions, num_substituions, num_ref_elements, alignment)'''
+           num_insertions, num_substitutions, num_ref_elements, alignment)'''
         return _tuple.__new__(_cls, (edit_distance, num_deletions,
-                                     num_insertions, num_substituions,
+                                     num_insertions, num_substitutions,
                                      num_ref_elements))
 
     @classmethod
@@ -114,7 +114,7 @@ class StatsTuple(tuple):
             replacing specified fields with new values'''
         result = _self._make(map(kwds.pop, ('edit_distance', 'num_deletions',
                                             'num_insertions',
-                                            'num_substituions',
+                                            'num_substitutions',
                                             'num_ref_elements'), _self))
         if kwds:
             raise ValueError('Got unexpected field names: %r' % list(kwds))
@@ -124,7 +124,7 @@ class StatsTuple(tuple):
         'Return a nicely formatted representation string'
         return self.__class__.__name__ + (
             '(edit_distance=%r, num_deletions=%r, num_insertions=%r, '
-            'num_substituions=%r, num_ref_elements=%r)' % self)
+            'num_substitutions=%r, num_ref_elements=%r)' % self)
 
     def _asdict(self):
         'Return a new OrderedDict which maps field names to their values.'
@@ -143,7 +143,7 @@ class StatsTuple(tuple):
     edit_distance = _property(_itemgetter(0), doc='Alias for field number 0')
     num_deletions = _property(_itemgetter(1), doc='Alias for field number 1')
     num_insertions = _property(_itemgetter(2), doc='Alias for field number 2')
-    num_substituions = _property(_itemgetter(3), doc='Alias for field number 3')
+    num_substitutions = _property(_itemgetter(3), doc='Alias for field number 3')
     num_ref_elements = _property(_itemgetter(4), doc='Alias for field number 4')
 
 
@@ -187,9 +187,6 @@ class WERCalculator():
         hypothesis : iterable
             the "hypothesis" iterable, e.g. elements present in hypothesis
             but absent in reference will be insertions
-
-    GP EDIT
-    added CER calculation method
     '''
 
     def __init__(self, reference, hypothesis):
@@ -212,28 +209,11 @@ class WERCalculator():
             reference_str = reference_str[10:] + " ..."
         return "WERCalculator({}, {})".format(hypothesis_str, reference_str)
 
-    def wer(self):
-        '''
-        return the word-error-rate
-        '''
-        return self.edit_distance / self.num_ref_elements
-
-    def cer(self):
-        '''
-        :return: character error rate: (sub + del + ins) / (total chars in reference text)
-        '''
-
-        return (
-               self.diff_stats.num_substituions + self.diff_stats.num_deletions + self.diff_stats.num_insertions) / self.num_ref_elements
-
     def set_diff_stats(self, prepare_alignment=False):
         '''
         set diff_stats tuple of (edit_distance, num_deletions, num_insertions,
-                                 num_substituions, num_ref_elements)
-        if prepare_alignment is true, then we also get the three lists we need
-        to be able to print out a nice alignment (we only do this if we need
-        to, because it can slow things down if the text is long)
-
+                                 num_substitutions, num_ref_elements)
+        we also get the two lists we need for the alignment
         '''
         reference = self.reference
         hypothesis = self.hypothesis
@@ -246,13 +226,12 @@ class WERCalculator():
 
         num_deletions = 0
         num_insertions = 0
-        num_substituions = 0
+        num_substitutions = 0
 
         if prepare_alignment:
             # we'll need these if we want the alignment
             align_ref_elements = []
             align_hypothesis_elements = []
-            align_label_str = []
 
         # start at the cell containing the edit distance and analyze the
         # matrix to figure out what is a deletion, insertion, or
@@ -265,7 +244,6 @@ class WERCalculator():
                 if prepare_alignment:
                     align_ref_elements.append(reference[i - 1])
                     align_hypothesis_elements.append(" ")
-                    align_label_str.append('D')
 
                 i -= 1
 
@@ -276,7 +254,6 @@ class WERCalculator():
                 if prepare_alignment:
                     align_ref_elements.append(" ")
                     align_hypothesis_elements.append(hypothesis[j - 1])
-                    align_label_str.append('I')
 
                 j -= 1
 
@@ -286,15 +263,11 @@ class WERCalculator():
                 hypothesis_element = hypothesis[j - 1]
 
                 if ref_element != hypothesis_element:
-                    num_substituions += 1
-                    label = 'S'
-                else:
-                    label = ' '
+                    num_substitutions += 1
 
                 if prepare_alignment:
                     align_ref_elements.append(ref_element)
                     align_hypothesis_elements.append(hypothesis_element)
-                    align_label_str.append(label)
 
                 i -= 1
                 j -= 1
@@ -302,14 +275,12 @@ class WERCalculator():
         if prepare_alignment:
             align_ref_elements.reverse()
             align_hypothesis_elements.reverse()
-            align_label_str.reverse()
 
             self.align_ref_elements = align_ref_elements
             self.align_hypothesis_elements = align_hypothesis_elements
-            self.align_label_str = align_label_str
 
         diff_stats = StatsTuple(edit_distance, num_deletions, num_insertions,
-                                num_substituions, num_ref_elements)
+                                num_substitutions, num_ref_elements)
         self._diff_stats = diff_stats
 
     @property
@@ -330,43 +301,34 @@ class WERCalculator():
                 orientation of printout. 'horizontal' will insert new lines
                 at about 70 characters across.
         '''
-        assert orient == 'horizontal' or orient == 'vertical' or orient == 'hypo' #GP EDIT: add third 'hypo' condition
+
+        assert orient == 'horizontal' or orient == 'vertical'
 
         if not hasattr(self, 'align_ref_elements'):
             self.set_diff_stats(prepare_alignment=True)
 
         assert (len(self.align_ref_elements) ==
-                len(self.align_hypothesis_elements) ==
-                len(self.align_label_str))
-
-        # just print a delimiter to separate this from the stats
-        print("---")
+                len(self.align_hypothesis_elements))
 
         if orient == 'horizontal':
             # we'll need to pad things to elements line up nicely horizontally
 
-            # list of the maximumum lengths of  (reference, hypothesis, label)
+            # list of the maximumum lengths of  (reference, hypothesis)
             max_lengths = [max(map(len, e)) for e
-                           in zip(self.align_ref_elements,
-                                  self.align_hypothesis_elements,
-                                  self.align_label_str)]
+                           in zip(self.align_ref_elements, self.align_hypothesis_elements)]
 
-            null_char_list = ['='] * len(max_lengths)  #GP EDIT (iterable of '=' to use as fill character for padding below)
+            null_char_list = ['='] * len(
+                max_lengths)  # GP EDIT (iterable of '=' to use as fill character for padding below)
 
             # list of reference elements with padding appropriate for printing
             padded_ref_elements = list(map(str.ljust,
                                            self.align_ref_elements,
-                                           max_lengths, null_char_list))  # GP EDIT: added '=' as replacement character
+                                           max_lengths, null_char_list))
 
             # list of hypothesis elements with padding appropriate for printing
             padded_hyp_elements = list(map(str.ljust,
                                            self.align_hypothesis_elements,
-                                           max_lengths, null_char_list))  # GP EDIT: added '=' as replacement character
-
-            # list of label elements with padding appropriate for printing
-            padded_label_elements = list(map(str.ljust,
-                                             self.align_label_str,
-                                             max_lengths))
+                                           max_lengths, null_char_list))
 
             # breakpoints that indicate the element that starts a new line.
             # this is so that we can cut the output off at 80 characters so it
@@ -381,7 +343,6 @@ class WERCalculator():
                 end_index = breakpoints[0]
                 print(" ".join(padded_ref_elements[start_index:end_index]))
                 print(" ".join(padded_hyp_elements[start_index:end_index]))
-                # print(" ".join(padded_label_elements[start_index:end_index]))  #GP EDIT (comment out)
                 print("")
 
                 # iterate through the rest and print the lines
@@ -389,7 +350,6 @@ class WERCalculator():
                                                     for i in range(2)]):
                     print(" ".join(padded_ref_elements[start_index:end_index]))
                     print(" ".join(padded_hyp_elements[start_index:end_index]))
-                    # print(" ".join(padded_label_elements[start_index: end_index])) #GP EDIT (comment out)
                     print("")
 
                 # if there was 2 or more breakpoints, there will be an
@@ -402,9 +362,8 @@ class WERCalculator():
             # one that exists
             print(" ".join(padded_ref_elements[start_index:]))
             print(" ".join(padded_hyp_elements[start_index:]))
-            # print(" ".join(padded_label_elements[start_index:]))  GP EDIT commented this line
             print("")
-        elif orient == 'vertical':  # GP EDIT (replaced "else": with this line)
+        else:
             # we'll need to pad things to create nice columns, which means that
             # we just have to add padding to the right side of the references
 
@@ -415,26 +374,16 @@ class WERCalculator():
             # do the padding
             padded_ref_elements = list(map(lambda x: str.ljust(x, max_length),
                                            self.align_ref_elements))
-            for x in zip(                        # GP EDIT: removed "self.align_label_str" (labels) in output (first argument to zip)
-                         padded_ref_elements,
-                         self.align_hypothesis_elements):
+            for x in zip(
+                    padded_ref_elements,
+                    self.align_hypothesis_elements):
                 print(" ".join(x))
-        # GP EDITS BELOW
-        elif orient == 'hypo':
-            print("test: padded_hypothesis_elements:")
-            print(padded_hyp_elements)
 
 
-
-def process_single_pair(args, print_headers=True, return_diff_stats=False):
+def process_single_pair(args):
     '''
     process a single pair of files.  Called by main when running in single pair
-    mode, or by process_batch when running in batch mode.  When running in
-    batch mode, return_diff_stats is True, and this function will return the
-    diff_stats from this calculation so process_batch can keep a running total
-
-    GP EDITS
-    changed wer.calculator.wer() to wer.calculator.cer()
+    mode, or by process_batch when running in batch mode.
     '''
     with open(args.reference_file) as f:
         reference = f.read().split()
@@ -442,55 +391,21 @@ def process_single_pair(args, print_headers=True, return_diff_stats=False):
     with open(args.hypothesis_file) as f:
         hypothesis = f.read().split()
 
-    if args.ignore_order:
-        # we ignore the impact of the order by sorting the elements
-        reference.sort()
-        hypothesis.sort()
-
     wer_calculator = WERCalculator(reference, hypothesis)
 
-    # if we're going to need to print the alignment, we'd better prepare for it
-    if args.print_alignment:
-        wer_calculator.set_diff_stats(prepare_alignment=True)
-
-    # we'll only print the first 25 characters of the filename
-    filename = path.basename(args.hypothesis_file)[:25]
-
-    if args.verbose:
-        # print full details
-        if print_headers:
-            print("FILENAME                  WER    EditDist #Delete #Insert #Substit #RefToks")
-            print("------------------------- ------ -------- -------- ------ -------- --------")
-
-        print("{: <25} {:.4f} {: >8d} {: >7d} {: >7d} {: >8d} {: >8}".format(
-            filename, wer_calculator.cer(), *wer_calculator.diff_stats))
-    else:
-        # just the WER please
-        print(filename, "CER: ", wer_calculator.cer())  ## GP changed!
-
-    if args.print_alignment:
-        wer_calculator.print_alignment(orient=args.print_alignment)
-
-    if return_diff_stats:
-        return wer_calculator.diff_stats
+    # prepare for printing alignment
+    wer_calculator.set_diff_stats(prepare_alignment=True)
+    wer_calculator.print_alignment(orient=args.vertical)
 
 
 def process_batch(args):
     '''
     process a batch of files, calling process_single_pair on each one of them
-
-    GP EDITS
-    changed WER output to CER output (under "print grand totals")
     '''
-    running_total_diff_stats = StatsTuple(0, 0, 0, 0, 0)
 
     line_counter = 0
 
     with open(args.mapping_file) as f:
-
-        # we only want to print headers once (unless we're also printing the
-        # alignment), so we'll need to keep track of that:
-        first_file = True
 
         for line in f.readlines():
 
@@ -513,51 +428,19 @@ def process_batch(args):
             # but it seems to work
             args.reference_file, args.hypothesis_file = parsed_line
 
-            # we only print the headers the first time around, or if we're
-            # also printing the alignment
-            if first_file or args.print_alignment:
-                print_headers = True
-                first_file = False
-            else:
-                print_headers = False
-
             try:
-                temp_diff_stats = process_single_pair(args,
-                                                      print_headers=print_headers,
-                                                      return_diff_stats=True)
+                process_single_pair(args)
             except FileNotFoundError as e:
                 print("[Errno {}] processing line {} of {}: No such file: {}".format(
                     e.errno, line_counter, args.mapping_file, e.filename),
-                    file=stderr)
+                      file=stderr)
                 continue
-
-            running_total_diff_stats += temp_diff_stats
-
-    # print the grand totals
-    total_wer = (running_total_diff_stats.edit_distance /
-                 running_total_diff_stats.num_ref_elements)
-
-    total_cer = (
-                running_total_diff_stats.num_substituions + running_total_diff_stats.num_deletions + running_total_diff_stats.num_insertions) / running_total_diff_stats.num_ref_elements
-
-    if args.verbose:
-        print("------------------------- ------ -------- -------- ------ -------- --------")
-        # print("{: <25} {:.4f} {: >8d} {: >7d} {: >7d} {: >8d} {: >8}".format(
-        #     'WEIGHTED AVERAGE WER', total_wer, *running_total_diff_stats))
-        print("{: <25} {:.4f} {: >8d} {: >7d} {: >7d} {: >8d} {: >8}".format('WEIGHTED AVERAGE CER', total_cer,
-                                                                             *running_total_diff_stats))
-    else:
-        print('------------------------------')
-        # print('WEIGHTED AVERAGE WER: ', total_wer) # GP EDIT
-        print('WEIGHTED AVERAGE CER: ', total_cer)
 
 
 def main():
     # set up the main parser
     parser = argparse.ArgumentParser(
-        description="Calculates Word-Error-Rate (WER) Note that WER is "
-                    "defined as (#insertions + #deletions + "
-                    "#substitutions) / (#tokens in reference)")
+        description="Produces a word-level alignment between reference and hypothesis texts")
 
     # set up subparser for single pair mode
     subparsers = parser.add_subparsers(
@@ -565,7 +448,7 @@ def main():
         help='indicates batch processing or single pair mode')
 
     single_parser = subparsers.add_parser('single',
-                                          help='calculate WER on a single '
+                                          help='produce alignment of a single '
                                                'pair of reference and '
                                                'hypothesis files')
     # main function for this sub_parser:
@@ -577,29 +460,12 @@ def main():
     single_parser.add_argument("hypothesis_file",
                                help='File to use as Hypothesis')
 
-    # add optional arguments for single pair mode.
-    single_parser.add_argument("--verbose", "-v",
-                               help="In addition to WER, prints edit "
-                                    "distance, and number of deletions, "
-                                    "insertions, and substitutions.",
-                               action='store_true',
-                               default=False)
-    single_parser.add_argument("--print_alignment", "-a",
-                               required=False, choices=['horizontal', 'vertical', 'hypo'], # GP EDIT
-                               help="Print the aligned text horizonally or "
-                                    "vertically.  vertical will be more readable "
-                                    "for longer texts, but horizontal will be more "
-                                    "concise.")
-    single_parser.add_argument("--ignore_order", "-i",
-                               help='Will ignore order of tokens when set (by '
-                                    'sorting the hypothesis and reference sequences)',
-                               action='store_true',
-                               default=False)
+    single_parser.add_argument("--vertical", help="Print alignment vertically", default='horizontal')
 
     # set up subparser for batch mode
     batch_parser = subparsers.add_parser(
         'batch',
-        help='calculate WER on a batch of pairs of reference '
+        help='produce an alignment of pairs of reference '
              'files and hypothesis files, stored in a file '
              'indicating their mapping')
 
@@ -614,26 +480,6 @@ def main():
              'mapping, where the first item on the line is a path '
              'to the reference file, followed by whitespace, '
              'followed by the path to the hypothesis file')
-
-    # optional arguments (these are the same as for single mode, but it makes
-    # the use of the command more intuitive)
-    batch_parser.add_argument("--verbose", "-v",
-                              help="In addition to WER, prints edit "
-                                   "distance, and number of deletions, "
-                                   "insertions, and substitutions.",
-                              action='store_true',
-                              default=False)
-    batch_parser.add_argument("--print_alignment", "-a",
-                              required=False, choices=['horizontal', 'vertical'],
-                              help="Print the aligned text horizonally or "
-                                   "vertically.  vertical will be more readable "
-                                   "for longer texts, but horizontal will be more "
-                                   "concise.")
-    batch_parser.add_argument("--ignore_order", "-i",
-                              help='Will ignore order of tokens when set (by '
-                                   'sorting the hypothesis and reference sequences)',
-                              action='store_true',
-                              default=False)
 
     args = parser.parse_args()
     args.main_func(args)
