@@ -25,17 +25,15 @@ def get_data(file_name):
         count = 1
         raw_x = str()
         raw_y = str()
-        raw_init = str()
         for line in f.readlines():
-            if not count == 1:
-                if count % 4 == 2:
-                    raw_y += line.strip() + '\n'
-                elif count % 4 == 3:
-                    raw_x += line.strip() + '\n'
-                elif count % 4 == 0:
-                    raw_init += line
+            if count % 3 == 1:
+                raw_y += line.strip() + '\n'
+            elif count % 3 == 2:
+                raw_x += line.strip() + '\n'
             count += 1
-        print("Data length:", len(raw_y))
+        
+        print("X Training Data Length:", len(raw_x))
+        print("Y Training Data length:", len(raw_y))
 
     return raw_x, raw_y
         
@@ -60,20 +58,25 @@ def reset_graph():
 def build_multilayer_lstm_graph_with_dynamic_rnn(
     num_classes, 
     state_size = 100,
-    batch_size = 20, # number of characters in each input
-    num_steps = 10,
     num_layers = 3,
     learning_rate = 1e-4):
 
     reset_graph()
+    
+    batch_size = tf.placeholder(tf.int64)
 
-    x = tf.placeholder(tf.int32, [batch_size, num_steps], name='input_placeholder')
-    y = tf.placeholder(tf.int32, [batch_size, num_steps], name='labels_placeholder')
+    x = tf.placeholder(tf.int32, shape=[None, 1], name='input_placeholder')
+    y = tf.placeholder(tf.int32, shape=[None, 1], name='labels_placeholder')
 
+    dataset = tf.data.Dataset.from_tensor_slices((x, y)).batch(batch_size).repeat()
+    
+    data_iter = dataset.make_initializable_iterator()
+    features, labels = data_iter.get_next()
+    
     embeddings = tf.get_variable('embedding_matrix', [num_classes, state_size])
 
     # Note that our inputs are no longer a list, but a tensor of dims batch_size x num_steps x state_size
-    rnn_inputs = tf.nn.embedding_lookup(embeddings, x)
+    rnn_inputs = tf.nn.embedding_lookup(embeddings, features)
 
     cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
     cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
@@ -84,8 +87,8 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
     cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=global_dropout)
     """
-    
-    init_state = cell.zero_state(batch_size, tf.float32)
+    dynam_batch_size = tf.shape(features)[0]
+    init_state = cell.zero_state(dynam_batch_size, tf.float32)
     rnn_outputs, final_state = tf.nn.dynamic_rnn(cell, rnn_inputs, initial_state=init_state)
 
     with tf.variable_scope('softmax'):
@@ -94,7 +97,7 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
 
     #reshape rnn_outputs and y so we can get the logits in a single matmul
     rnn_outputs = tf.reshape(rnn_outputs, [-1, state_size])
-    y_reshaped = tf.reshape(y, [-1])
+    y_reshaped = tf.reshape(labels, [-1])
 
     logits = tf.matmul(rnn_outputs, W) + b
 
@@ -106,6 +109,8 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     return dict(
         x = x,
         y = y,
+        data_iter = data_iter,
+        batch_size = batch_size,
         init_state = init_state,
         final_state = final_state,
         total_loss = total_loss,
@@ -113,75 +118,30 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     )
     
     
-"""
- original code https://github.com/petewarden/tensorflow_makefile/blob/master/tensorflow/models/rnn/ptb/reader.py
-Iterate on the raw PTB data.
-  This generates batch_size pointers into the raw PTB data, and allows
-  minibatch iteration along these pointers.
-  Args:
-    raw_data: one of the raw data outputs from ptb_raw_data.
-    batch_size: int, the batch size.
-    num_steps: int, the number of unrolls.
-  Yields:
-    Pairs of the batched data, each a matrix of shape [batch_size, num_steps].
-  Raises:
-    ValueError: if batch_size or num_steps are too high.
-  """
-def data_iterator(batch_size, num_steps):
-    raw_X_data = np.array(tr_X_data, dtype=np.int32)
-    raw_Y_data = np.array(tr_Y_data, dtype=np.int32)
 
-    data_len = len(raw_X_data)
-    batch_len = data_len // batch_size
-    x_data = np.zeros([batch_size, batch_len], dtype=np.int32)
-    y_data = np.zeros([batch_size, batch_len], dtype=np.int32)
-    for i in range(batch_size):
-        start_ind = batch_len * i
-        end_ind = batch_len * (i + 1)
-        x_data[i] = raw_X_data[start_ind:end_ind]
-        y_data[i] = raw_Y_data[start_ind:end_ind]
-            
-    epoch_size = (batch_len - 1) // num_steps
-    
-    if epoch_size == 0:
-        raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
-
-    for i in range(epoch_size):
-        x = x_data[:, i*num_steps:(i+1)*num_steps]
-        y = y_data[:, i*num_steps:(i+1)*num_steps]
-        yield (x, y)
-    
-    
-def gen_epochs(n, num_steps, batch_size):
-    for i in range(n):
-        yield data_iterator(batch_size, num_steps)
         
 """
 CURRENTLY BATCHES ARE A WINDOW OF 20, FOR SLIDING WINDOW GEN_EPOCHS NEEDS TO CHANGE
 """
-def train_network(g, num_epochs, num_steps = 10, batch_size = 20, verbose = True, save=False):
-    tf.set_random_seed(2345)
+def train_network(g, verbose=True, save=False):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
+        
+        sess.run(g['data_iter'].initializer, feed_dict={g['x']: tr_X_data, g['y']: tr_Y_data, 
+                                          g['batch_size']: BATCH_SIZE})
+                                          
         training_losses = []
-        for idx, epoch in enumerate(gen_epochs(num_epochs, num_steps, batch_size)):
-            training_loss = 0
+        for i in range(EPOCHS):
             steps = 0
-            training_state = None
-            for X, Y in epoch:
+            tot_loss = 0
+            for _ in range(N_BATCHES):
+                _, loss_value = sess.run([g['train_step'],g['total_loss']])
+                tot_loss += loss_value
                 steps += 1
 
-                feed_dict={g['x']: X, g['y']: Y}
-                if training_state is not None:
-                    feed_dict[g['init_state']] = training_state
-                training_loss_, training_state, _ = sess.run([g['total_loss'],
-                                                      g['final_state'],
-                                                      g['train_step']],
-                                                             feed_dict)
-                training_loss += training_loss_
             if verbose:
-                print("Average training loss for Epoch", idx, ":", training_loss/steps)
-            training_losses.append(training_loss/steps)
+                print("Average training loss for Epoch", i, ":", tot_loss/steps)
+            training_losses.append(tot_loss/steps)
 
         if isinstance(save, str):
             g['saver'].save(sess, save)
@@ -189,7 +149,30 @@ def train_network(g, num_epochs, num_steps = 10, batch_size = 20, verbose = True
     return training_losses
     
 
+    
+def eval_network(g):
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        #predictions = []
+        #gold_standard = []
+        sess.run(g['data_iter'].initializer, feed_dict={g['x']: test_X_data, 
+                                g['y']: test_Y_data, g['batch_size']: len(test_X_data)})
+        print(sess.run([g['total_loss']]))         
+    
 
+
+def char_err_rate(pred, gold):
+    total = 0.
+    error = 0.
+    for i in range(len(pred)):
+        total+= 1
+        if not pred[i] == gold[i]:
+            error+= 1
+            
+    accuracy = error / total
+    return error, total, accuracy
+            
+    
 
 train_file = sys.argv[1]
 test_file = sys.argv[2]
@@ -205,28 +188,31 @@ test_raw_x, test_raw_y = get_data(test_file)
 
 idx_vocab, vocab_idx, tr_vocab_size = make_train_dict(tr_raw_x, tr_raw_y)
 
-tr_X_data = [vocab_idx[c] for c in tr_raw_x]
-tr_Y_data = [vocab_idx[c] for c in tr_raw_y]
+tr_X_data = np.vstack([vocab_idx[c] for c in tr_raw_x])
+tr_Y_data = np.vstack([vocab_idx[c] for c in tr_raw_y])
 
-test_X_data = [vocab_idx[c] for c in test_raw_x]
-test_Y_data = [vocab_idx[c] for c in test_raw_y]
+test_X_data = np.vstack([vocab_idx[c] for c in test_raw_x])
+test_Y_data = np.vstack([vocab_idx[c] for c in test_raw_y])
 
-
+EPOCHS = 10
+BATCH_SIZE = 20
+N_BATCHES = len(tr_X_data) // BATCH_SIZE
 t = time.time()
 graph = build_multilayer_lstm_graph_with_dynamic_rnn(num_classes=tr_vocab_size)
-print("It took", time.time() - t, "seconds to build the graph.")
-t = time.time()
-train_network(graph, 3)
-print("It took", time.time() - t, "seconds to train for 3 epochs.")
+print("It took", time.time() - t, "seconds to build the graph...")
+
+print('Training...')
+train_network(graph)
+
+print("Evaluating test data...")
+eval_network(graph)
 
 """
-feed_dict={g['x']: X, g['y']: Y}
+convert_pred = [idx_vocab[c] for c in pred]
+convert_gold = [idx_vocab[c] for c in gold]
 
-with tf.Session() as sess:
-  # Feeding a value changes the result that is returned when you evaluate `y`.
-  print(sess.run(y, {x: [1.0, 2.0, 3.0]}))  # => "[1.0, 4.0, 9.0]"
-  print(sess.run(y, {x: [0.0, 0.0, 5.0]}))  # => "[0.0, 0.0, 25.0]"
+print(convert_pred)
+print(convert_gold)
 
-print classification
+print("Character error rate:", char_err_rate(convert_pred, convert_gold))
 """
-
