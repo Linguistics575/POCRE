@@ -292,7 +292,7 @@ class WERCalculator():
             self.set_diff_stats()
         return self._diff_stats
 
-    def print_alignment(self, orient='horizontal'):
+    def print_alignment(self, vertical=None):
         '''
         pretty prints an alignment to stdout
         Parameters:
@@ -302,15 +302,13 @@ class WERCalculator():
                 at about 70 characters across.
         '''
 
-        assert orient == 'horizontal' or orient == 'vertical'
-
         if not hasattr(self, 'align_ref_elements'):
             self.set_diff_stats(prepare_alignment=True)
 
         assert (len(self.align_ref_elements) ==
                 len(self.align_hypothesis_elements))
 
-        if orient == 'horizontal':
+        if not vertical:
             # we'll need to pad things to elements line up nicely horizontally
 
             # list of the maximumum lengths of  (reference, hypothesis)
@@ -395,7 +393,7 @@ def process_single_pair(args):
 
     # prepare for printing alignment
     wer_calculator.set_diff_stats(prepare_alignment=True)
-    wer_calculator.print_alignment(orient=args.vertical)
+    wer_calculator.print_alignment(vertical=args.vertical)
 
 
 def process_batch(args):
@@ -454,13 +452,12 @@ def main():
     # main function for this sub_parser:
     single_parser.set_defaults(main_func=process_single_pair)
 
-    # arguments
+     # arguments
     single_parser.add_argument("reference_file",
                                help='File to use as Reference')
     single_parser.add_argument("hypothesis_file",
                                help='File to use as Hypothesis')
-
-    single_parser.add_argument("--vertical", help="Print alignment vertically", default='horizontal')
+    single_parser.add_argument("--vertical", "-v", help="Print alignment vertically", action="store_true", default=False)
 
     # set up subparser for batch mode
     batch_parser = subparsers.add_parser(
@@ -480,6 +477,8 @@ def main():
              'mapping, where the first item on the line is a path '
              'to the reference file, followed by whitespace, '
              'followed by the path to the hypothesis file')
+    batch_parser.add_argument("--vertical", "-v", help="Print alignment vertically", action="store_true",
+                               default=False)
 
     args = parser.parse_args()
     args.main_func(args)
