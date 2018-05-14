@@ -4,20 +4,36 @@ Created on Thu May  3 11:01:46 2018
 
 @author: aymm
 Based on tutorial in https://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
+
+Takes in 2 files as arguments. The first file is the training data, and the second file is the test data. 
+The program reads in the files, builds a neural model based on Tensorflow, dynamically trains on the training data
+in batches for a number of epochs (as determined by the EPOCHS variable), and test the trained model on the test data.
+Data is expected to be in the following format and aligned by character:
+Gold standard line 1
+OCR output line 1
+
+Gold standard line 2
+OCR output line 2
+
+...
+Gold standard line x
+OCR output line x
+
+Note that the model will 
+
 """
 
 import numpy as np
 import tensorflow as tf
-#matplotlib inline
-#import matplotlib.pyplot as plt
 import time
 import os
 import sys
-#import urllib.request
-#from tensorflow.models.rnn.ptb import reader
 
 """
-Load and process data, utility functions
+Load and processes data from the given data files. Separates the lines into
+OCR output (X/input data) and gold standard (Y/label data). Prints out the 
+lengths of the datasets make sure sets are properly aligned. Returns the 
+X and Y sets.
 """
         
 def get_data(file_name):
@@ -32,12 +48,19 @@ def get_data(file_name):
                 raw_x += line.strip() + '\n'
             count += 1
         
-        print("X Training Data Length:", len(raw_x))
-        print("Y Training Data length:", len(raw_y))
+        print("X Data Length:", len(raw_x))
+        print("Y Data length:", len(raw_y))
+        # TODO: Throw error if lengths do not match
 
     return raw_x, raw_y
         
         
+"""
+Takes in the X and Y datasets and represents each character in both sets as an integer.
+Note that these are the only characters that the model will be able to predict.
+Returns dictionaries mapping the characters to the representative integers and the integers
+to the characters, as well as the number of unique characters.
+"""
 def make_train_dict(raw_x, raw_y):
     x_vocab = set(raw_x)
     y_vocab = set(raw_y)
@@ -49,12 +72,18 @@ def make_train_dict(raw_x, raw_y):
     return idx_to_vocab, vocab_to_idx, vocab_size
     
     
+"""
+Resets tensorflow for new trained model if one has already been trained.
+"""
 def reset_graph():
     if 'sess' in globals() and sess:
         sess.close()
     tf.reset_default_graph()    
     
     
+"""
+Builds and returns a multilayer lstm graph with capabilities for dynamically inputing data
+"""
 def build_multilayer_lstm_graph_with_dynamic_rnn(
     num_classes, 
     state_size = 100,
@@ -68,6 +97,9 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     x = tf.placeholder(tf.int32, shape=[None, 1], name='input_placeholder')
     y = tf.placeholder(tf.int32, shape=[None, 1], name='labels_placeholder')
 
+    # The following allows the model to dynamically accept different sizes of x and also 
+    # produces batches of the input data. 
+    # TODO: change to sliding window if possible
     dataset = tf.data.Dataset.from_tensor_slices((x, y)).batch(batch_size).repeat()
     
     data_iter = dataset.make_initializable_iterator()
@@ -75,18 +107,19 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     
     embeddings = tf.get_variable('embedding_matrix', [num_classes, state_size])
 
-    # Note that our inputs are no longer a list, but a tensor of dims batch_size x num_steps x state_size
     rnn_inputs = tf.nn.embedding_lookup(embeddings, features)
 
     cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
     cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
+
     """
-    Test dropout
+    TODO: Test how dropout affects accuracy
     cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
     cell = tf.nn.rnn_cell.DropoutWrapper(cell, input_keep_prob=global_dropout)
     cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
     cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=global_dropout)
     """
+        
     dynam_batch_size = tf.shape(features)[0]
     init_state = cell.zero_state(dynam_batch_size, tf.float32)
     rnn_outputs, final_state = tf.nn.dynamic_rnn(cell, rnn_inputs, initial_state=init_state)
@@ -101,11 +134,15 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
 
     logits = tf.matmul(rnn_outputs, W) + b
 
+    predictions = tf.nn.softmax(logits)
+
     total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y_reshaped))
+    
+    #train_step = tf.train.AdamOptimizer(learning_rate).minimize(total_loss)
     # Different optimizer recommended by https://towardsdatascience.com/lstm-by-example-using-tensorflow-feb0c1968537
     train_step = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(total_loss)
-    #train_step = tf.train.AdamOptimizer(learning_rate).minimize(total_loss)
-
+    
+    # The following are accessible once the graph has been built:
     return dict(
         x = x,
         y = y,
@@ -114,16 +151,19 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
         init_state = init_state,
         final_state = final_state,
         total_loss = total_loss,
-        train_step = train_step
+        train_step = train_step,
+        preds = predictions, 
+        saver = tf.train.Saver()
     )
     
     
-
         
 """
-CURRENTLY BATCHES ARE A WINDOW OF 20, FOR SLIDING WINDOW GEN_EPOCHS NEEDS TO CHANGE
+Takes in the built model and trains over the training data for the given number of EPOCHS in the given
+BATCH_SIZE. Saves the session for later use after training. Prints the training losses for each epoch if verbose=True.
 """
-def train_network(g, verbose=True, save=False):
+#TODO: Allow for save filename to be given in command line
+def train_network(g, verbose=True, save="save/10_EPOCHS"):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         
@@ -149,18 +189,37 @@ def train_network(g, verbose=True, save=False):
     return training_losses
     
 
-    
-def eval_network(g):
+"""
+Takes in the trained model and returns the predicted output of the test data.
+Note that preds is a matrix that is of the shape (test_data, vocab_size), where each
+array is a distribution for each character in the test_data and each index in the array
+is the probability that each character in the training vocabulary is the output. 
+"""
+def eval_network(g, checkpoint, idx_to_vocab):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        #predictions = []
-        #gold_standard = []
+        g['saver'].restore(sess, checkpoint)
+
         sess.run(g['data_iter'].initializer, feed_dict={g['x']: test_X_data, 
                                 g['y']: test_Y_data, g['batch_size']: len(test_X_data)})
-        print(sess.run([g['total_loss']]))         
+        total_loss, preds = sess.run([g['total_loss'], g['preds']])
+        print("Total test loss = ", total_loss)
+        output = []
+        for distrib in preds:
+            char = np.random.choice(tr_vocab_size, 1, p=np.squeeze(distrib))[0]
+            output.append(char)
+
+        print(output)
+        mapping = lambda t: idx_to_vocab[t]
+        char_func = np.vectorize(mapping)
+        chars = char_func(output)
+        return "".join(chars)
     
 
-
+"""
+Compares the predicted string and the gold standard string. Returns the 
+error, the total number of characters, and the accuracy.
+"""
 def char_err_rate(pred, gold):
     total = 0.
     error = 0.
@@ -169,11 +228,11 @@ def char_err_rate(pred, gold):
         if not pred[i] == gold[i]:
             error+= 1
             
-    accuracy = error / total
+    accuracy = (total - error) / total * 100
     return error, total, accuracy
             
     
-
+# MAIN
 train_file = sys.argv[1]
 test_file = sys.argv[2]
 if not os.path.exists(train_file):
@@ -202,17 +261,17 @@ graph = build_multilayer_lstm_graph_with_dynamic_rnn(num_classes=tr_vocab_size)
 print("It took", time.time() - t, "seconds to build the graph...")
 
 print('Training...')
+t = time.time()
 train_network(graph)
+print("It took", time.time() - t, "seconds to train the model...")
 
 print("Evaluating test data...")
-eval_network(graph)
+chars = eval_network(graph, "save/10_EPOCHS", idx_vocab)
+err, total_chars, acc = char_err_rate(chars, test_raw_y)
+print(chars)
 
-"""
-convert_pred = [idx_vocab[c] for c in pred]
-convert_gold = [idx_vocab[c] for c in gold]
+TODO: highlight changed characters in the prediction
 
-print(convert_pred)
-print(convert_gold)
-
-print("Character error rate:", char_err_rate(convert_pred, convert_gold))
-"""
+print("Accuracy: ", acc)
+print("Total errors: ", err)
+print("Total chars: ", total_chars)
