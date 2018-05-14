@@ -105,10 +105,13 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     data_iter = dataset.make_initializable_iterator()
     features, labels = data_iter.get_next()
     
+    # RECOMMEND FROM AARON: make state_size a different variable that is unique to embeddings
     embeddings = tf.get_variable('embedding_matrix', [num_classes, state_size])
 
     rnn_inputs = tf.nn.embedding_lookup(embeddings, features)
 
+    # RECOMMEND FROM AARON: add cells for bidirectional, seq-to-seq model
+        # cell_input_forward, cell_input_backward, cell_output_forward
     cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
     cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
 
@@ -167,6 +170,8 @@ def train_network(g, verbose=True, save="save/10_EPOCHS"):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         
+        # Either change dataset to get sliding window, or find dataset method for sliding 
+        #https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/data/sliding_window_batch
         sess.run(g['data_iter'].initializer, feed_dict={g['x']: tr_X_data, g['y']: tr_Y_data, 
                                           g['batch_size']: BATCH_SIZE})
                                           
@@ -205,6 +210,7 @@ def eval_network(g, checkpoint, idx_to_vocab):
         total_loss, preds = sess.run([g['total_loss'], g['preds']])
         print("Total test loss = ", total_loss)
         output = []
+        # NOT RANDOM, CHANGE TO MAX
         for distrib in preds:
             char = np.random.choice(tr_vocab_size, 1, p=np.squeeze(distrib))[0]
             output.append(char)
