@@ -19,7 +19,7 @@ OCR output line 2
 Gold standard line x
 OCR output line x
 
-Note that the model will 
+Note that the program will crash if the data is not aligned by character!
 
 """
 
