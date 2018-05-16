@@ -137,7 +137,7 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
 
     logits = tf.matmul(rnn_outputs, W) + b
 
-    predictions = tf.nn.softmax(logits)
+    predictions = tf.argmax(logits, axis=1)
 
     total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y_reshaped))
     
@@ -209,16 +209,9 @@ def eval_network(g, checkpoint, idx_to_vocab):
                                 g['y']: test_Y_data, g['batch_size']: len(test_X_data)})
         total_loss, preds = sess.run([g['total_loss'], g['preds']])
         print("Total test loss = ", total_loss)
-        output = []
-        # NOT RANDOM, CHANGE TO MAX
-        for distrib in preds:
-            char = np.random.choice(tr_vocab_size, 1, p=np.squeeze(distrib))[0]
-            output.append(char)
-
-        print(output)
         mapping = lambda t: idx_to_vocab[t]
         char_func = np.vectorize(mapping)
-        chars = char_func(output)
+        chars = char_func(preds)
         return "".join(chars)
     
 
