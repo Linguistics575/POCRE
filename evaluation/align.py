@@ -17,7 +17,6 @@ bear  ====
 Adapted by GP from @author Jimmy Bruno's WER.py
 
 GP EDITS:
-added '=' (as null character) for padding instead of default ' ' in horizontal alignment output
 removed labels in alignment output
 removed error rate statistics in output
 removed -verbose option
@@ -28,6 +27,7 @@ import argparse
 from collections import OrderedDict
 from itertools import chain
 from os import path
+import re
 
 # used in StatsTuple:
 from builtins import property as _property, tuple as _tuple
@@ -308,6 +308,7 @@ class WERCalculator():
         assert (len(self.align_ref_elements) ==
                 len(self.align_hypothesis_elements))
 
+
         if not vertical:
             # we'll need to pad things to elements line up nicely horizontally
 
@@ -315,23 +316,24 @@ class WERCalculator():
             max_lengths = [max(map(len, e)) for e
                            in zip(self.align_ref_elements, self.align_hypothesis_elements)]
 
-            null_char_list = ['='] * len(
-                max_lengths)  # GP EDIT (iterable of '=' to use as fill character for padding below)
+            # null_char_list = ['='] * len(
+            #     max_lengths)  # GP EDIT (iterable of '=' to use as fill character for padding below)
 
             # list of reference elements with padding appropriate for printing
             padded_ref_elements = list(map(str.ljust,
                                            self.align_ref_elements,
-                                           max_lengths, null_char_list))
+                                           max_lengths))
 
             # list of hypothesis elements with padding appropriate for printing
             padded_hyp_elements = list(map(str.ljust,
                                            self.align_hypothesis_elements,
-                                           max_lengths, null_char_list))
+                                           max_lengths))
 
             # breakpoints that indicate the element that starts a new line.
             # this is so that we can cut the output off at 80 characters so it
             # doesn't run off of the screen
-            breakpoints = get_breakpoints(padded_ref_elements, 79)
+            # breakpoints = get_breakpoints(padded_ref_elements, 79) # COMMENTED FOR GP TESTING
+            breakpoints = get_breakpoints(self.align_ref_elements, 79)
 
             start_index = 0
             end_index = None
@@ -339,15 +341,26 @@ class WERCalculator():
             # print the first slice if there are any breakpoints
             if breakpoints:
                 end_index = breakpoints[0]
-                print(" ".join(padded_ref_elements[start_index:end_index]))
-                print(" ".join(padded_hyp_elements[start_index:end_index]))
+                # print(" ".join(padded_ref_elements[start_index:end_index]))
+                # print(" ".join(padded_hyp_elements[start_index:end_index]))
+                # print("")
+                ref_line = " ".join(self.align_ref_elements[start_index:end_index])
+                hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
+                print(re.sub(" {2,}", " ", ref_line))  # reduce multiple spaces between tokens to one space
+                print(re.sub(" {2,}", " ", hyp_line))
                 print("")
+
 
                 # iterate through the rest and print the lines
                 for start_index, end_index in zip(*[breakpoints[i:]
                                                     for i in range(2)]):
-                    print(" ".join(padded_ref_elements[start_index:end_index]))
-                    print(" ".join(padded_hyp_elements[start_index:end_index]))
+                    # print(" ".join(padded_ref_elements[start_index:end_index]))
+                    # print(" ".join(padded_hyp_elements[start_index:end_index]))
+                    # print("")
+                    ref_line = " ".join(self.align_ref_elements[start_index:end_index])
+                    hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
+                    print(re.sub(" {2,}", " ", ref_line))  # reduce multiple spaces between tokens to one space
+                    print(re.sub(" {2,}", " ", hyp_line))
                     print("")
 
                 # if there was 2 or more breakpoints, there will be an
@@ -358,9 +371,15 @@ class WERCalculator():
 
             # and print the last one left in the "buffer", or perhaps the only
             # one that exists
-            print(" ".join(padded_ref_elements[start_index:]))
-            print(" ".join(padded_hyp_elements[start_index:]))
+            # print(" ".join(padded_ref_elements[start_index:]))
+            # print(" ".join(padded_hyp_elements[start_index:]))
+            # print("")
+            ref_line = " ".join(self.align_ref_elements[start_index:end_index])
+            hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
+            print(re.sub(" {2,}", " ", ref_line)) # reduce multiple spaces between tokens to one space
+            print(re.sub(" {2,}", " ", hyp_line))
             print("")
+
         else:
             # we'll need to pad things to create nice columns, which means that
             # we just have to add padding to the right side of the references
