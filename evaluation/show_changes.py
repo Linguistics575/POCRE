@@ -1,33 +1,28 @@
 #!/usr/bin/env python3
-
 '''
-Script to get a printed alignment between reference and hypothesis texts.
+script to get WER, edit distance, numbers of deletions, substitutions,
+insertions, and a printed alignment between reference and hypothesis texts.
+Verbose output looks like this:
+    WER    EditDist #Substit #Delete #Insert #RefToks
+    ---    -------- -------- ------- ------- --------
+    0.7333       88       45      35       8      120
 Horizontally printed alignment looks like this:
-==== Fuzzy Wuzzy was a==== bear
-John Fuzzy Wuzzy had hair. ====
-
+     Fuzzy Wuzzy was a     bear
+John Fuzzy Wuzzy had hair.
+I                S   S     D
 Vertically printed alignment looks like this:
-===== John
-Fuzzy Fuzzy
-Wuzzy Wuzzy
-was   had
-a==== hair.
-bear  ====
-
-Adapted by GP from @author Jimmy Bruno's WER.py
-
-GP EDITS:
-removed labels in alignment output
-removed error rate statistics in output
-removed -verbose option
-removed -a argument so that outputting alignment is default behavior
+I       John
+  Fuzzy Fuzzy
+  Wuzzy Wuzzy
+S was   had
+S a     hair.
+D bear
+@author Jimmy Bruno
 '''
-
 import argparse
 from collections import OrderedDict
 from itertools import chain
 from os import path
-import re
 
 # used in StatsTuple:
 from builtins import property as _property, tuple as _tuple
@@ -35,6 +30,7 @@ from operator import itemgetter as _itemgetter
 
 
 def get_distance_matrix(ref, hypothesis):
+
     '''
     return an edit distance matrix
     Parameters:
@@ -62,11 +58,11 @@ def get_distance_matrix(ref, hypothesis):
     for i in range(1, ref_len):
         for j in range(1, hyp_len):
 
-            deletion = distance_matrix[i - 1][j] + 1
-            insertion = distance_matrix[i][j - 1] + 1
-            substitution = distance_matrix[i - 1][j - 1]
+            deletion = distance_matrix[i-1][j] + 1
+            insertion = distance_matrix[i][j-1] + 1
+            substitution = distance_matrix[i-1][j-1]
 
-            if ref[i - 1] != hypothesis[j - 1]:
+            if ref[i-1] != hypothesis[j-1]:
                 substitution += 1
 
             distance_matrix[i][j] = min(insertion, deletion, substitution)
@@ -84,21 +80,21 @@ class StatsTuple(tuple):
         edit_distance : int
         num_deletions : int
         num_insertions :int
-        num_substitutions : int
+        num_substituions : int
         num_ref_elements :int
     '''
 
     __slots__ = ()
 
     _fields = ('edit_distance', 'num_deletions', 'num_insertions',
-               'num_substitutions', 'num_ref_elements')
+               'num_substituions', 'num_ref_elements')
 
     def __new__(_cls, edit_distance, num_deletions, num_insertions,
-                num_substitutions, num_ref_elements):
+                num_substituions, num_ref_elements):
         '''Create new instance of DiffStats(edit_distance, num_deletions,
-           num_insertions, num_substitutions, num_ref_elements, alignment)'''
+           num_insertions, num_substituions, num_ref_elements, alignment)'''
         return _tuple.__new__(_cls, (edit_distance, num_deletions,
-                                     num_insertions, num_substitutions,
+                                     num_insertions, num_substituions,
                                      num_ref_elements))
 
     @classmethod
@@ -114,7 +110,7 @@ class StatsTuple(tuple):
             replacing specified fields with new values'''
         result = _self._make(map(kwds.pop, ('edit_distance', 'num_deletions',
                                             'num_insertions',
-                                            'num_substitutions',
+                                            'num_substituions',
                                             'num_ref_elements'), _self))
         if kwds:
             raise ValueError('Got unexpected field names: %r' % list(kwds))
@@ -123,8 +119,8 @@ class StatsTuple(tuple):
     def __repr__(self):
         'Return a nicely formatted representation string'
         return self.__class__.__name__ + (
-            '(edit_distance=%r, num_deletions=%r, num_insertions=%r, '
-            'num_substitutions=%r, num_ref_elements=%r)' % self)
+                    '(edit_distance=%r, num_deletions=%r, num_insertions=%r, '
+                    'num_substituions=%r, num_ref_elements=%r)' % self)
 
     def _asdict(self):
         'Return a new OrderedDict which maps field names to their values.'
@@ -143,7 +139,7 @@ class StatsTuple(tuple):
     edit_distance = _property(_itemgetter(0), doc='Alias for field number 0')
     num_deletions = _property(_itemgetter(1), doc='Alias for field number 1')
     num_insertions = _property(_itemgetter(2), doc='Alias for field number 2')
-    num_substitutions = _property(_itemgetter(3), doc='Alias for field number 3')
+    num_substituions = _property(_itemgetter(3), doc='Alias for field number 3')
     num_ref_elements = _property(_itemgetter(4), doc='Alias for field number 4')
 
 
@@ -188,7 +184,6 @@ class WERCalculator():
             the "hypothesis" iterable, e.g. elements present in hypothesis
             but absent in reference will be insertions
     '''
-
     def __init__(self, reference, hypothesis):
         self.reference = reference
         self.hypothesis = hypothesis
@@ -209,11 +204,19 @@ class WERCalculator():
             reference_str = reference_str[10:] + " ..."
         return "WERCalculator({}, {})".format(hypothesis_str, reference_str)
 
+    def wer(self):
+        '''
+        return the word-error-rate
+        '''
+        return self.edit_distance/self.num_ref_elements
+
     def set_diff_stats(self, prepare_alignment=False):
         '''
         set diff_stats tuple of (edit_distance, num_deletions, num_insertions,
-                                 num_substitutions, num_ref_elements)
-        we also get the two lists we need for the alignment
+                                 num_substituions, num_ref_elements)
+        if prepare_alignment is true, then we also get the three lists we need
+        to be able to print out a nice alignment (we only do this if we need
+        to, because it can slow things down if the text is long)
         '''
         reference = self.reference
         hypothesis = self.hypothesis
@@ -226,48 +229,55 @@ class WERCalculator():
 
         num_deletions = 0
         num_insertions = 0
-        num_substitutions = 0
+        num_substituions = 0
 
         if prepare_alignment:
             # we'll need these if we want the alignment
             align_ref_elements = []
             align_hypothesis_elements = []
+            align_label_str = []
 
         # start at the cell containing the edit distance and analyze the
         # matrix to figure out what is a deletion, insertion, or
         # substitution.
         while i or j:
             # if deletion
-            if distance_matrix[i][j] == distance_matrix[i - 1][j] + 1:
+            if distance_matrix[i][j] == distance_matrix[i-1][j] + 1:
                 num_deletions += 1
 
                 if prepare_alignment:
-                    align_ref_elements.append(reference[i - 1])
+                    align_ref_elements.append(reference[i-1])
                     align_hypothesis_elements.append(" ")
+                    align_label_str.append('D')
 
                 i -= 1
 
             # if insertion
-            elif distance_matrix[i][j] == distance_matrix[i][j - 1] + 1:
+            elif distance_matrix[i][j] == distance_matrix[i][j-1] + 1:
                 num_insertions += 1
 
                 if prepare_alignment:
                     align_ref_elements.append(" ")
-                    align_hypothesis_elements.append(hypothesis[j - 1])
+                    align_hypothesis_elements.append(hypothesis[j-1])
+                    align_label_str.append('I')
 
                 j -= 1
 
             # if match or substitution
             else:
-                ref_element = reference[i - 1]
-                hypothesis_element = hypothesis[j - 1]
+                ref_element = reference[i-1]
+                hypothesis_element = hypothesis[j-1]
 
                 if ref_element != hypothesis_element:
-                    num_substitutions += 1
+                    num_substituions += 1
+                    label = 'S'
+                else:
+                    label = ' '
 
                 if prepare_alignment:
                     align_ref_elements.append(ref_element)
                     align_hypothesis_elements.append(hypothesis_element)
+                    align_label_str.append(label)
 
                 i -= 1
                 j -= 1
@@ -275,12 +285,14 @@ class WERCalculator():
         if prepare_alignment:
             align_ref_elements.reverse()
             align_hypothesis_elements.reverse()
+            align_label_str.reverse()
 
             self.align_ref_elements = align_ref_elements
             self.align_hypothesis_elements = align_hypothesis_elements
+            self.align_label_str = align_label_str
 
         diff_stats = StatsTuple(edit_distance, num_deletions, num_insertions,
-                                num_substitutions, num_ref_elements)
+                                num_substituions, num_ref_elements)
         self._diff_stats = diff_stats
 
     @property
@@ -292,137 +304,95 @@ class WERCalculator():
             self.set_diff_stats()
         return self._diff_stats
 
-    def print_alignment(self, vertical=None):
+
+    def changed(self, plain_text):
         '''
-        pretty prints an alignment to stdout
-        Parameters:
-        -----------
-            orient : str ('horizontal' or 'vertical', defaults to 'horizontal')
-                orientation of printout. 'horizontal' will insert new lines
-                at about 70 characters across.
+        returns the plain_text string plus markup for bold and red font formatting (indicating a change)
+        :param plain_text: text to change
+        :return: text with markup tags
         '''
+
+        return r"\b \cf3 " + plain_text + r" \b0 \cf2"
+
+
+    def gp_show_changes(self):
+        '''
+        Prints the hypothesis text only, showing differences between it and the reference in red, bold text
+        '''
+
+        # GP EDITS
+        # treating 'ref' as correction system INPUT (top line, original), 'hyp' as OUTPUT (bottom line, changed)
 
         if not hasattr(self, 'align_ref_elements'):
             self.set_diff_stats(prepare_alignment=True)
 
         assert (len(self.align_ref_elements) ==
-                len(self.align_hypothesis_elements))
+                len(self.align_hypothesis_elements) ==
+                len(self.align_label_str))
 
+        assert len(self.align_label_str) == len(self.align_hypothesis_elements) == len(self.align_ref_elements), "different number of elements"
 
-        if not vertical:
-            # we'll need to pad things to elements line up nicely horizontally
-
-            # list of the maximumum lengths of  (reference, hypothesis)
-            max_lengths = [max(map(len, e)) for e
-                           in zip(self.align_ref_elements, self.align_hypothesis_elements)]
-
-            # null_char_list = ['='] * len(
-            #     max_lengths)  # GP EDIT (iterable of '=' to use as fill character for padding below)
-
-            # list of reference elements with padding appropriate for printing
-            padded_ref_elements = list(map(str.ljust,
-                                           self.align_ref_elements,
-                                           max_lengths))
-
-            # list of hypothesis elements with padding appropriate for printing
-            padded_hyp_elements = list(map(str.ljust,
-                                           self.align_hypothesis_elements,
-                                           max_lengths))
-
-            # breakpoints that indicate the element that starts a new line.
-            # this is so that we can cut the output off at 80 characters so it
-            # doesn't run off of the screen
-            # breakpoints = get_breakpoints(padded_ref_elements, 79) # COMMENTED FOR GP TESTING
-            breakpoints = get_breakpoints(self.align_ref_elements, 79)
-
-            start_index = 0
-            end_index = None
-
-            # print the first slice if there are any breakpoints
-            if breakpoints:
-                end_index = breakpoints[0]
-                # print(" ".join(padded_ref_elements[start_index:end_index]))
-                # print(" ".join(padded_hyp_elements[start_index:end_index]))
-                # print("")
-                ref_line = " ".join(self.align_ref_elements[start_index:end_index])
-                hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
-                print(re.sub(" {2,}", " ", ref_line))  # reduce multiple spaces between tokens to one space
-                print(re.sub(" {2,}", " ", hyp_line))
-                print("")
-
-
-                # iterate through the rest and print the lines
-                for start_index, end_index in zip(*[breakpoints[i:]
-                                                    for i in range(2)]):
-                    # print(" ".join(padded_ref_elements[start_index:end_index]))
-                    # print(" ".join(padded_hyp_elements[start_index:end_index]))
-                    # print("")
-                    ref_line = " ".join(self.align_ref_elements[start_index:end_index])
-                    hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
-                    print(re.sub(" {2,}", " ", ref_line))  # reduce multiple spaces between tokens to one space
-                    print(re.sub(" {2,}", " ", hyp_line))
-                    print("")
-
-                # if there was 2 or more breakpoints, there will be an
-                # end_index here, and that will be the start_index for the last
-                # printing
-                if end_index:
-                    start_index = end_index
-
-            # and print the last one left in the "buffer", or perhaps the only
-            # one that exists
-            # print(" ".join(padded_ref_elements[start_index:]))
-            # print(" ".join(padded_hyp_elements[start_index:]))
-            # print("")
-            ref_line = " ".join(self.align_ref_elements[start_index:end_index])
-            hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
-            print(re.sub(" {2,}", " ", ref_line)) # reduce multiple spaces between tokens to one space
-            print(re.sub(" {2,}", " ", hyp_line))
-            print("")
-
-        else:
-            # we'll need to pad things to create nice columns, which means that
-            # we just have to add padding to the right side of the references
-
-            # maximum length of any element
-            max_length = max(map(len,
-                                 list(chain(self.align_ref_elements,
-                                            self.align_hypothesis_elements))))
-            # do the padding
-            padded_ref_elements = list(map(lambda x: str.ljust(x, max_length),
-                                           self.align_ref_elements))
-            for x in zip(
-                    padded_ref_elements,
-                    self.align_hypothesis_elements):
-                print(" ".join(x))
+        # for each word in line, determine whether there's a change and print with the according format
+        for index in range(len(self.align_label_str)):
+            if self.align_label_str[index] == ' ':
+                print(self.align_hypothesis_elements[index] + ' ')
+            elif self.align_label_str[index] == 'S' or self.align_label_str[index] == 'I':
+                element = self.align_hypothesis_elements[index]
+                element = self.align_hypothesis_elements[index]
+                print(self.changed(element) + ' ')
+            else:  # a deletion - need to print what was in the original that got deleted
+                element = self.align_ref_elements[index]
+                print(self.changed('[DELETED: ' + element + ']'))
+        print("\\")
 
 
 def process_single_pair(args):
     '''
     process a single pair of files.  Called by main when running in single pair
     mode, or by process_batch when running in batch mode.
+
+    GP EDIT: process files line by line, so alignment is only on the line level and printing (WERcalculator.gp_show_changes) happens at each line
     '''
     with open(args.reference_file) as f:
-        reference = f.read().split()
+        reference_lines = f.readlines()
 
     with open(args.hypothesis_file) as f:
-        hypothesis = f.read().split()
+        hypothesis_lines = f.readlines()
 
-    wer_calculator = WERCalculator(reference, hypothesis)
+    assert len(reference_lines) == len(hypothesis_lines), "Files contain different numbers of lines"
 
-    # prepare for printing alignment
-    wer_calculator.set_diff_stats(prepare_alignment=True)
-    wer_calculator.print_alignment(vertical=args.vertical)
+    # print header for rich text format; need to do this outside of the foreach loop for lines in the files
+    header = r'{\rtf1\ansi\ansicpg1252\cocoartf1404\cocoasubrtf470{\fonttbl\f0\fswiss\fcharset0 Helvetica;}{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red255\green0\blue0;}\margl1440\margr1440\vieww11940\viewh7800\viewkind0\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0\f0\fs24 \cf2'
+
+    print(header)
+
+    for i in range(len(reference_lines)):
+        reference = reference_lines[i].split()
+        hypothesis = hypothesis_lines[i].split()
+        wer_calculator = WERCalculator(reference, hypothesis)
+
+        wer_calculator.set_diff_stats(prepare_alignment=True)
+
+        wer_calculator.gp_show_changes()
+
+    print('}')
 
 
 def process_batch(args):
     '''
     process a batch of files, calling process_single_pair on each one of them
+    GP EDITS: deleted a bunch of stuff that's not relevant given my other changes but haven't tested that this method still works.
+    There might still be extraneous lines.
     '''
+    running_total_diff_stats = StatsTuple(0, 0, 0, 0, 0)
 
     line_counter = 0
 
     with open(args.mapping_file) as f:
+
+        # we only want to print headers once (unless we're also printing the
+        # alignment), so we'll need to keep track of that:
+        first_file = True
 
         for line in f.readlines():
 
@@ -445,63 +415,71 @@ def process_batch(args):
             # but it seems to work
             args.reference_file, args.hypothesis_file = parsed_line
 
+            # # we only print the headers the first time around, or if we're
+            # # also printing the alignment
+            # if first_file or args.print_alignment:
+            #     print_headers = True
+            #     first_file = False
+            # else:
+            #     print_headers = False
+
             try:
-                process_single_pair(args)
+                temp_diff_stats = process_single_pair(args)
             except FileNotFoundError as e:
                 print("[Errno {}] processing line {} of {}: No such file: {}".format(
-                    e.errno, line_counter, args.mapping_file, e.filename),
-                      file=stderr)
+                        e.errno, line_counter, args.mapping_file, e.filename),
+                     file=stderr)
                 continue
+
+            running_total_diff_stats += temp_diff_stats
 
 
 def main():
     # set up the main parser
     parser = argparse.ArgumentParser(
-        description="Produces a word-level alignment between reference and hypothesis texts")
+        description="Calculates Word-Error-Rate (WER) Note that WER is "
+                    "defined as (#insertions + #deletions + "
+                    "#substitutions) / (#tokens in reference)")
 
     # set up subparser for single pair mode
     subparsers = parser.add_subparsers(
-        title='subcommands',
-        help='indicates batch processing or single pair mode')
+                        title='subcommands',
+                        help='indicates batch processing or single pair mode')
 
     single_parser = subparsers.add_parser('single',
-                                          help='produce alignment of a single '
+                                          help='calculate WER on a single '
                                                'pair of reference and '
                                                'hypothesis files')
     # main function for this sub_parser:
     single_parser.set_defaults(main_func=process_single_pair)
 
-     # arguments
+    # arguments
     single_parser.add_argument("reference_file",
                                help='File to use as Reference')
     single_parser.add_argument("hypothesis_file",
                                help='File to use as Hypothesis')
-    single_parser.add_argument("--vertical", "-v", help="Print alignment vertically", action="store_true", default=False)
 
-    # set up subparser for batch mode
+     # set up subparser for batch mode
     batch_parser = subparsers.add_parser(
-        'batch',
-        help='produce an alignment of pairs of reference '
-             'files and hypothesis files, stored in a file '
-             'indicating their mapping')
+                    'batch',
+                    help='calculate WER on a batch of pairs of reference '
+                         'files and hypothesis files, stored in a file '
+                         'indicating their mapping')
 
     # main function for batch mode:
     batch_parser.set_defaults(main_func=process_batch)
 
     # argument
     batch_parser.add_argument(
-        'mapping_file',
-        help='file of mappings of reference files to thier '
-             'hypothesis files.  Each line represents one '
-             'mapping, where the first item on the line is a path '
-             'to the reference file, followed by whitespace, '
-             'followed by the path to the hypothesis file')
-    batch_parser.add_argument("--vertical", "-v", help="Print alignment vertically", action="store_true",
-                               default=False)
+                    'mapping_file',
+                    help='file of mappings of reference files to thier '
+                         'hypothesis files.  Each line represents one '
+                         'mapping, where the first item on the line is a path '
+                         'to the reference file, followed by whitespace, '
+                         'followed by the path to the hypothesis file')
 
     args = parser.parse_args()
     args.main_func(args)
-
 
 if __name__ == '__main__':
     main()
