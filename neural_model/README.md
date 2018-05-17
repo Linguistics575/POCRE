@@ -5,7 +5,7 @@ The model takes in your data file, and outputs the corrected string directly.
 
 The command line to run the model is:
 
-##python run_pretrained.py your_data_file
+## python run_pretrained.py your_data_file > your_output_file
 
 Make sure the the pretrained/ folder is in your working directory. No gold standard is needed and no evaluation metrics are printed by this script.
 
@@ -41,6 +41,6 @@ Note that the program will crash if the data is not aligned by character!
 
 Example command line:
 
-##python bidirect_lstm.py training_file test_file
+## python bidirect_lstm.py training_file test_file > your_output_file
 
 Note that this program also outputs model building and model training times and an evaluation metric, in addition to the corrected text.
