@@ -1,10 +1,10 @@
 A program to show where a hypothesis text (such as the output from an OCR correction system) differs from a reference text (such as the raw OCR'd text). 
 
-# Input
+## Input
 The hypothesis and reference text files, in plain text format (.txt). It is assumed that the files have line-by-line correspondence (line breaks are the same).
 
-# Output 
-The hypothesis text with changes shown in red. Words that appear in the reference text but not in the hypothesis text are preceded by "DELETED: "
+## Output 
+The hypothesis text with changes shown in bold and red. Words that appear in the reference text but not in the hypothesis text are preceded by "DELETED: "
 
 > __[DELETED: :]__ The boisterous Mor Whymper came to __breakfast. .....__ I've decided all that 
 > excitable volubility in his company __B......__ er because when he crosses over 
@@ -19,5 +19,5 @@ To run from the command line:
 python show_changes.py single path/reference_file.txt path/hypothesis_file.txt > output_file.txt
 '''
 
-# NOTE
+## NOTE
 This process will eventually be incorporated into the OCR correction system itself so comparing system output to system input will happen automatically and running this script separately won't be necessary.
