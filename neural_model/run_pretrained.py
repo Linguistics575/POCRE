@@ -38,9 +38,8 @@ def get_data(file_name):
         for line in f.readlines():
             if line:
 		raw_x += line.strip() + '\n'
-		
-        #print("X Data Length:", len(raw_x))
-
+	
+	
     return raw_x
         
 
