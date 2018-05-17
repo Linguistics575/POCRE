@@ -31,6 +31,6 @@ OCR output line x
 Note that the program will crash if the data is not aligned by character!
 
 Example command line:
-##python train_lstm.py training_file test_file
+##python bidirect_lstm.py training_file test_file
 
 Note that this program also outputs model building and model training times and an evaluation metric, in addition to the corrected text.
