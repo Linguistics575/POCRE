@@ -227,6 +227,7 @@ with open(vocab_idx_file) as VI_json_file:
 
 test_raw_x = get_data(test_file)
 
+# TODO: Add in informative error if foreign test character found.
 test_X_data = np.vstack([vocab_idx[c] for c in test_raw_x])
 
 EPOCHS = 20
