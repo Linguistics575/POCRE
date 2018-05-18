@@ -1,5 +1,6 @@
 # POCRE
 POCRE (“poker”) - Post Optical Character Recognition Evaluation
+Optical Character Recognition (OCR) - retreiving text from images automatically
 
 ## Description
 POCRE is a system for correcting text that is the output of an OCR system. OCR systems, depending on how their trained and the quality of the images that are input, frequently make errors interpreting characters from pixels. These errors differ from human errors because they are often based on visual characteristics rather than meaning or sound. The purpose of this system is to predict machine-introduced errors for a human annotator to later correct for any relevant downstream task.
