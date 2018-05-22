@@ -23,6 +23,7 @@ import argparse
 from collections import OrderedDict
 from itertools import chain
 from os import path
+import re
 
 # used in StatsTuple:
 from builtins import property as _property, tuple as _tuple
@@ -317,7 +318,7 @@ class WERCalculator():
 
     def gp_show_changes(self):
         '''
-        Prints the hypothesis text only, showing differences between it and the reference in red, bold text
+        Returns the hypothesis text only, with differences between it and the reference surrounded by formatting markup
         '''
 
         # GP EDITS
@@ -332,48 +333,67 @@ class WERCalculator():
 
         assert len(self.align_label_str) == len(self.align_hypothesis_elements) == len(self.align_ref_elements), "different number of elements"
 
-        # for each word in line, determine whether there's a change and print with the according format
+        # for each word in line, determine whether there's a change and append with the according format
+        print_string = ''
         for index in range(len(self.align_label_str)):
             if self.align_label_str[index] == ' ':
-                print(self.align_hypothesis_elements[index] + ' ')
+                print_string += self.align_hypothesis_elements[index] + ' '
             elif self.align_label_str[index] == 'S' or self.align_label_str[index] == 'I':
                 element = self.align_hypothesis_elements[index]
-                element = self.align_hypothesis_elements[index]
-                print(self.changed(element) + ' ')
+                print_string += self.changed(element) + ' '
             else:  # a deletion - need to print what was in the original that got deleted
                 element = self.align_ref_elements[index]
-                print(self.changed('[DELETED: ' + element + ']'))
-        print("\\")
-
+                print_string += self.changed('[' + element + ']')
+        return print_string
 
 def process_single_pair(args):
     '''
     process a single pair of files.  Called by main when running in single pair
     mode, or by process_batch when running in batch mode.
 
-    GP EDIT: process files line by line, so alignment is only on the line level and printing (WERcalculator.gp_show_changes) happens at each line
+    Do alignment on files line by line, so alignment is only at the line level and printing
+    (WERcalculator.gp_show_changes) also happens at each line
     '''
+
+    # get non-empty lines from reference and hypothesis files
     with open(args.reference_file) as f:
         reference_lines = f.readlines()
+    reference_lines = [l for l in reference_lines if l != '\n']
 
     with open(args.hypothesis_file) as f:
         hypothesis_lines = f.readlines()
+    hypothesis_lines = [l for l in hypothesis_lines if l != '\n']
 
     assert len(reference_lines) == len(hypothesis_lines), "Files contain different numbers of lines"
 
     # print header for rich text format; need to do this outside of the foreach loop for lines in the files
-    header = r'{\rtf1\ansi\ansicpg1252\cocoartf1404\cocoasubrtf470{\fonttbl\f0\fswiss\fcharset0 Helvetica;}{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red255\green0\blue0;}\margl1440\margr1440\vieww11940\viewh7800\viewkind0\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0\f0\fs24 \cf2'
+    header = r"{\rtf1\ansi\ansicpg1252\cocoartf1404\cocoasubrtf470{\fonttbl\f0\fswiss\fcharset0 Helvetica;}" \
+             r"{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red255\green0\blue0;}" \
+             r"\margl1440\margr1440\vieww11940\viewh7800\viewkind0\pard\tx720\tx1440\tx2160\tx2880\tx3600" \
+             r"\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0\f0\fs24 \cf2"
 
     print(header)
 
     for i in range(len(reference_lines)):
-        reference = reference_lines[i].split()
-        hypothesis = hypothesis_lines[i].split()
-        wer_calculator = WERCalculator(reference, hypothesis)
+        reference_words = reference_lines[i].split()
+        hypothesis_words = hypothesis_lines[i].split()
+        wer_calculator = WERCalculator(reference_words, hypothesis_words)
 
         wer_calculator.set_diff_stats(prepare_alignment=True)
 
-        wer_calculator.gp_show_changes()
+        formatted_line = wer_calculator.gp_show_changes()
+        # also print original line to the right if show_original flag is present
+        if args.show_original:
+            original_line = reference_lines[i]
+            # find number of characters contained in the formatting tags so we can adjust the padding
+            tags_length = -1
+            for token in formatted_line.split():
+                if token.startswith('\\'):
+                    tags_length += len(token) + 1  # plus one for following space character
+            padding = 110 + tags_length  # this still doesn't give nice columns, not sure how to fix
+            formatted_line = "{:{padding}}{}".format(formatted_line, original_line, padding=padding)
+        print(formatted_line)
+        print("\\")
 
     print('}')
 
@@ -381,18 +401,15 @@ def process_single_pair(args):
 def process_batch(args):
     '''
     process a batch of files, calling process_single_pair on each one of them
-    GP EDITS: deleted a bunch of stuff that's not relevant given my other changes but haven't tested that this method still works.
-    There might still be extraneous lines.
+    GP EDITS: deleted a bunch of stuff that's not relevant given my other changes but haven't tested that
+    this method still works.
+    Also there might still be extraneous code.
     '''
     running_total_diff_stats = StatsTuple(0, 0, 0, 0, 0)
 
     line_counter = 0
 
     with open(args.mapping_file) as f:
-
-        # we only want to print headers once (unless we're also printing the
-        # alignment), so we'll need to keep track of that:
-        first_file = True
 
         for line in f.readlines():
 
@@ -408,27 +425,19 @@ def process_batch(args):
 
             if len(parsed_line) != 2:
                 print("Error: line {} of mapping file contains more than a "
-                      "pair of paths".format(i), file=stderr)
+                      "pair of paths".format(i), file=sys.stderr)
                 continue
 
             # this is a little hacky, manipulating the args object,
             # but it seems to work
             args.reference_file, args.hypothesis_file = parsed_line
 
-            # # we only print the headers the first time around, or if we're
-            # # also printing the alignment
-            # if first_file or args.print_alignment:
-            #     print_headers = True
-            #     first_file = False
-            # else:
-            #     print_headers = False
-
             try:
                 temp_diff_stats = process_single_pair(args)
             except FileNotFoundError as e:
                 print("[Errno {}] processing line {} of {}: No such file: {}".format(
                         e.errno, line_counter, args.mapping_file, e.filename),
-                     file=stderr)
+                     file=sys.stderr)
                 continue
 
             running_total_diff_stats += temp_diff_stats
@@ -437,9 +446,8 @@ def process_batch(args):
 def main():
     # set up the main parser
     parser = argparse.ArgumentParser(
-        description="Calculates Word-Error-Rate (WER) Note that WER is "
-                    "defined as (#insertions + #deletions + "
-                    "#substitutions) / (#tokens in reference)")
+        description="Compare an original text and an edited text "
+                    "and output the changes in the edited text in bolded red font.")
 
     # set up subparser for single pair mode
     subparsers = parser.add_subparsers(
@@ -447,23 +455,25 @@ def main():
                         help='indicates batch processing or single pair mode')
 
     single_parser = subparsers.add_parser('single',
-                                          help='calculate WER on a single '
-                                               'pair of reference and '
-                                               'hypothesis files')
+                                          help='compare a single pair of edited and original texts')
     # main function for this sub_parser:
     single_parser.set_defaults(main_func=process_single_pair)
 
     # arguments
     single_parser.add_argument("reference_file",
-                               help='File to use as Reference')
+                               help='File to use as original')
     single_parser.add_argument("hypothesis_file",
-                               help='File to use as Hypothesis')
+                               help='File to use as edited')
+    single_parser.add_argument('--show_original',
+                               help='displays the original and edited texts side by side for easier comparison',
+                               action='store_true',
+                               default=False)
 
      # set up subparser for batch mode
     batch_parser = subparsers.add_parser(
                     'batch',
-                    help='calculate WER on a batch of pairs of reference '
-                         'files and hypothesis files, stored in a file '
+                    help='compare a batch of pairs of original and '
+                         'edited texts, stored in a file '
                          'indicating their mapping')
 
     # main function for batch mode:
@@ -472,11 +482,11 @@ def main():
     # argument
     batch_parser.add_argument(
                     'mapping_file',
-                    help='file of mappings of reference files to thier '
-                         'hypothesis files.  Each line represents one '
+                    help='file of mappings of original files to their '
+                         'edited version files.  Each line represents one '
                          'mapping, where the first item on the line is a path '
-                         'to the reference file, followed by whitespace, '
-                         'followed by the path to the hypothesis file')
+                         'to the original file, followed by whitespace, '
+                         'followed by the path to the edited file', )
 
     args = parser.parse_args()
     args.main_func(args)
