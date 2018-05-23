@@ -16,7 +16,7 @@ To run from the command line:
 * Run the following command:
 
 ```
-python show_changes.py single path/original_file.txt path/edited_file.txt > output_file.txt
+python show_changes.py single path/original_file.txt path/edited_file.txt > output_file
 ```
 
 ## NOTE

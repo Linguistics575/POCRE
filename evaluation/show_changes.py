@@ -1,29 +1,14 @@
 #!/usr/bin/env python3
 '''
-script to get WER, edit distance, numbers of deletions, substitutions,
-insertions, and a printed alignment between reference and hypothesis texts.
-Verbose output looks like this:
-    WER    EditDist #Substit #Delete #Insert #RefToks
-    ---    -------- -------- ------- ------- --------
-    0.7333       88       45      35       8      120
-Horizontally printed alignment looks like this:
-     Fuzzy Wuzzy was a     bear
-John Fuzzy Wuzzy had hair.
-I                S   S     D
-Vertically printed alignment looks like this:
-I       John
-  Fuzzy Fuzzy
-  Wuzzy Wuzzy
-S was   had
-S a     hair.
-D bear
-@author Jimmy Bruno
+
+@author genevp, adapted from Jimmy Bruno
 '''
 import argparse
 from collections import OrderedDict
 from itertools import chain
 from os import path
 import re
+import sys
 
 # used in StatsTuple:
 from builtins import property as _property, tuple as _tuple
@@ -346,6 +331,7 @@ class WERCalculator():
                 print_string += self.changed('[' + element + ']')
         return print_string
 
+
 def process_single_pair(args):
     '''
     process a single pair of files.  Called by main when running in single pair
@@ -360,14 +346,15 @@ def process_single_pair(args):
         reference_lines = f.readlines()
     reference_lines = [l for l in reference_lines if l != '\n']
 
-    with open(args.hypothesis_file) as f:
-        hypothesis_lines = f.readlines()
-    hypothesis_lines = [l for l in hypothesis_lines if l != '\n']
+    # with open(args.hypothesis_file) as f:
+    #     hypothesis_lines = f.readlines()
+    # READ FROM STDIN FOR EDITED VERSION OF TEXT
+    hypothesis_lines = [l for l in sys.stdin.readlines() if l != '\n']
 
     assert len(reference_lines) == len(hypothesis_lines), "Files contain different numbers of lines"
 
     # print header for rich text format; need to do this outside of the foreach loop for lines in the files
-    header = r"{\rtf1\ansi\ansicpg1252\cocoartf1404\cocoasubrtf470{\fonttbl\f0\fswiss\fcharset0 Helvetica;}" \
+    header = r"{\rtf1\ansi\ansicpg1252\cocoartf1404\cocoasubrtf470{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;}" \
              r"{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red255\green0\blue0;}" \
              r"\margl1440\margr1440\vieww11940\viewh7800\viewkind0\pard\tx720\tx1440\tx2160\tx2880\tx3600" \
              r"\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0\f0\fs24 \cf2"
@@ -383,14 +370,15 @@ def process_single_pair(args):
 
         formatted_line = wer_calculator.gp_show_changes()
         # also print original line to the right if show_original flag is present
+        # should probably make this into a separate method at some point
         if args.show_original:
             original_line = reference_lines[i]
             # find number of characters contained in the formatting tags so we can adjust the padding
-            tags_length = -1
+            tags_length = 0
             for token in formatted_line.split():
                 if token.startswith('\\'):
-                    tags_length += len(token) + 1  # plus one for following space character
-            padding = 110 + tags_length  # this still doesn't give nice columns, not sure how to fix
+                    tags_length += len(token) + 1  # plus 1 for following space character
+            padding = 100 + tags_length  # this still doesn't give nice columns, not sure how to fix
             formatted_line = "{:{padding}}{}".format(formatted_line, original_line, padding=padding)
         print(formatted_line)
         print("\\")
@@ -403,7 +391,7 @@ def process_batch(args):
     process a batch of files, calling process_single_pair on each one of them
     GP EDITS: deleted a bunch of stuff that's not relevant given my other changes but haven't tested that
     this method still works.
-    Also there might still be extraneous code.
+    Also there might still be extraneous lines.
     '''
     running_total_diff_stats = StatsTuple(0, 0, 0, 0, 0)
 
@@ -425,7 +413,7 @@ def process_batch(args):
 
             if len(parsed_line) != 2:
                 print("Error: line {} of mapping file contains more than a "
-                      "pair of paths".format(i), file=sys.stderr)
+                      "pair of paths".format(i))
                 continue
 
             # this is a little hacky, manipulating the args object,
@@ -436,8 +424,7 @@ def process_batch(args):
                 temp_diff_stats = process_single_pair(args)
             except FileNotFoundError as e:
                 print("[Errno {}] processing line {} of {}: No such file: {}".format(
-                        e.errno, line_counter, args.mapping_file, e.filename),
-                     file=sys.stderr)
+                        e.errno, line_counter, args.mapping_file, e.filename))
                 continue
 
             running_total_diff_stats += temp_diff_stats
@@ -462,8 +449,9 @@ def main():
     # arguments
     single_parser.add_argument("reference_file",
                                help='File to use as original')
-    single_parser.add_argument("hypothesis_file",
-                               help='File to use as edited')
+    # READING FROM STDIN INSTEAD
+    # single_parser.add_argument("hypothesis_file",
+    #                            help='File to use as edited')
     single_parser.add_argument('--show_original',
                                help='displays the original and edited texts side by side for easier comparison',
                                action='store_true',
