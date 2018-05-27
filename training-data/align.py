@@ -2,6 +2,9 @@
 
 '''
 Script to get a printed alignment between reference and hypothesis texts.
+
+Default is horizontal.
+
 Horizontally printed alignment looks like this:
 ==== Fuzzy Wuzzy was a==== bear
 John Fuzzy Wuzzy had hair. ====
@@ -308,7 +311,6 @@ class WERCalculator():
         assert (len(self.align_ref_elements) ==
                 len(self.align_hypothesis_elements))
 
-
         if not vertical:
             # we'll need to pad things to elements line up nicely horizontally
 
@@ -349,7 +351,6 @@ class WERCalculator():
                 print(re.sub(" {2,}", " ", ref_line))  # reduce multiple spaces between tokens to one space
                 print(re.sub(" {2,}", " ", hyp_line))
                 print("")
-
 
                 # iterate through the rest and print the lines
                 for start_index, end_index in zip(*[breakpoints[i:]
@@ -438,7 +439,7 @@ def process_batch(args):
 
             if len(parsed_line) != 2:
                 print("Error: line {} of mapping file contains more than a "
-                      "pair of paths".format(i), file=stderr)
+                      "pair of paths".format(i))
                 continue
 
             # this is a little hacky, manipulating the args object,
@@ -449,8 +450,7 @@ def process_batch(args):
                 process_single_pair(args)
             except FileNotFoundError as e:
                 print("[Errno {}] processing line {} of {}: No such file: {}".format(
-                    e.errno, line_counter, args.mapping_file, e.filename),
-                      file=stderr)
+                    e.errno, line_counter, args.mapping_file, e.filename))
                 continue
 
 
