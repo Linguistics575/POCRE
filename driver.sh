@@ -1,8 +1,8 @@
 #!/bin/bash
+# run from main "POCRE" directory
 # sample command: sh driver.sh input_file.txt --show_original > output_file 
-# This enforces single file processing (with the "single" flag in the command) for now, until I fix the batch method in show_changes.py
 
 # $1 is raw OCR text (system input)
-# $... are flags
+# $... are flags (--numbered or --show_original)
 
-python run_pretrained.py $1 | python show_changes.py single $@
+python neural_model/run_pretrained.py $1 | python evaluation/show_changes.py $@
