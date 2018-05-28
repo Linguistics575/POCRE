@@ -1,1 +1,2 @@
-kd
+model_checkpoint_path: "5-25-2018"
+all_model_checkpoint_paths: "5-25-2018"
