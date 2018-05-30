@@ -265,10 +265,10 @@ test_Y_data = np.vstack([vocab_idx[c] for c in test_raw_y])
 
 EPOCHS = 20
 BATCH_SIZE = 32
-CHECKPOINT = "pretrained/5-16-2018"
+CHECKPOINT = "pretrained/bidirect_lstm/5-16-2018"
 N_BATCHES = len(tr_X_data) // BATCH_SIZE
 
-with open("pretrained/5-16-2018-vocab-dictionaries", 'w') as jsonfile:
+with open("pretrained/bidirect_lstm/5-16-2018-vocab-dictionaries", 'w') as jsonfile:
     json.dump(vocab_tuple, jsonfile)
 
 t = time.time()
