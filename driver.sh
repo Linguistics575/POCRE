@@ -5,4 +5,4 @@
 # $1 is raw OCR text (system input)
 # $... are flags (--numbered or --show_original)
 
-python neural_model/run_pretrained.py $1 | python evaluation/show_changes.py $@
+python neural_model/run_pretrained_BE-DD.py $1 | python evaluation/show_changes.py $@
