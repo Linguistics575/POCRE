@@ -214,7 +214,7 @@ def char_err_rate(pred, gold):
     
 # MAIN
 test_file = sys.argv[1]
-vocab_idx_file = "pretrained/5-16-2018-vocab-dictionaries"
+vocab_idx_file = "pretrained/bidirect_lstm/5-16-2018-vocab-dictionaries"
 
 idx_vocab = dict()
 vocab_idx = dict()
