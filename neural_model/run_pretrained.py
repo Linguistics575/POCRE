@@ -232,7 +232,7 @@ test_X_data = np.vstack([vocab_idx[c] for c in test_raw_x])
 
 EPOCHS = 20
 BATCH_SIZE = 32
-CHECKPOINT = "pretrained/5-16-2018"
+CHECKPOINT = "pretrained/bidirect_lstm/5-16-2018"
 t = time.time()
 graph = build_multilayer_lstm_graph_with_dynamic_rnn(num_classes=tr_vocab_size)
 #print("It took", time.time() - t, "seconds to build the graph...")
