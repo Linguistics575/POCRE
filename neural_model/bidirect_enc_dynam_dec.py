@@ -101,72 +101,72 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     learning_rate = 1e-4):
 
     reset_graph()
-    
-    batch_size = tf.placeholder(tf.int64)
+    with tf.variable_scope('encoder'):
+        batch_size = tf.placeholder(tf.int64, name='batch_size')
 
-    x = tf.placeholder(tf.int32, shape=(None, None), name='input_placeholder')
-    y = tf.placeholder(tf.int32, shape=(None, None), name='labels_placeholder')
+        x = tf.placeholder(tf.int32, shape=(None, None), name='input_placeholder')
+        y = tf.placeholder(tf.int32, shape=(None, None), name='labels_placeholder')
 
     # The following allows the model to dynamically accept different sizes of x and also 
     # produces batches of the input data. 
-    dataset = tf.data.Dataset.from_tensor_slices((x, y)).batch(batch_size).repeat()
+        dataset = tf.data.Dataset.from_tensor_slices((x, y)).batch(batch_size).repeat()
     
-    data_iter = dataset.make_initializable_iterator()
-    features, labels = data_iter.get_next()
+        data_iter = dataset.make_initializable_iterator()
+        features, labels = data_iter.get_next()
     
-    embeddings = tf.get_variable('embedding_matrix', [num_classes, embedding_size])
-    rnn_inputs = tf.nn.embedding_lookup(embeddings, features)
-    dec_inputs = tf.nn.embedding_lookup(embeddings, labels)
+        embeddings = tf.get_variable('embedding_matrix', [num_classes, embedding_size])
+        rnn_inputs = tf.nn.embedding_lookup(embeddings, features)
+        dec_inputs = tf.nn.embedding_lookup(embeddings, labels)
     
 	# ENCODING -----
 
-    fw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
-    bw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
-    #cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
+        fw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
+        bw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
+        #cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
 
-    """
-    TODO: Test how dropout affects accuracy
-    cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
-    cell = tf.nn.rnn_cell.DropoutWrapper(cell, input_keep_prob=global_dropout)
-    cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
-    cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=global_dropout)
-    """
+        """
+        TODO: Test how dropout affects accuracy
+        cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
+        cell = tf.nn.rnn_cell.DropoutWrapper(cell, input_keep_prob=global_dropout)
+        cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
+        cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=global_dropout)
+        """
         
-    dynam_batch_size = tf.shape(features)[0]
-    fw_init_state = fw_cell.zero_state(dynam_batch_size, tf.float32)
-    bw_init_state = bw_cell.zero_state(dynam_batch_size, tf.float32)
-    (fw_output, bw_output), (fw_final_state, bw_final_state) = tf.nn.bidirectional_dynamic_rnn(
-        fw_cell, 
-        bw_cell, 
-        rnn_inputs, 
-        initial_state_fw=fw_init_state, 
-        initial_state_bw=bw_init_state)
+        dynam_batch_size = tf.shape(features)[0]
+        fw_init_state = fw_cell.zero_state(dynam_batch_size, tf.float32)
+        bw_init_state = bw_cell.zero_state(dynam_batch_size, tf.float32)
+        (fw_output, bw_output), (fw_final_state, bw_final_state) = tf.nn.bidirectional_dynamic_rnn(
+            fw_cell, 
+            bw_cell, 
+            rnn_inputs, 
+            initial_state_fw=fw_init_state, 
+            initial_state_bw=bw_init_state)
 
 
 	# DECODING -----
 	# From tutorial https://github.com/ematvey/tensorflow-seq2seq-tutorials/blob/master/2-seq2seq-advanced.ipynb
 
-    enc_final_state_c = tf.concat((fw_final_state.c, bw_final_state.c), 1)
-    enc_final_state_h = tf.concat((fw_final_state.h, bw_final_state.h), 1)
-    enc_final_state = tf.contrib.rnn.LSTMStateTuple(c=enc_final_state_c, 
+        enc_final_state_c = tf.concat((fw_final_state.c, bw_final_state.c), 1)
+        enc_final_state_h = tf.concat((fw_final_state.h, bw_final_state.h), 1)
+        enc_final_state = tf.contrib.rnn.LSTMStateTuple(c=enc_final_state_c, 
                                      h=enc_final_state_h)	
-    with tf.variable_scope('softmax'):
+    with tf.variable_scope('decoder'):
         W = tf.get_variable('W', [2*state_size, num_classes])
         b = tf.get_variable('b', [num_classes], initializer=tf.constant_initializer(0.0))
     
 
-    decoder_cell = tf.nn.rnn_cell.LSTMCell(2*state_size, state_is_tuple=True)
-    decoder_init_state = decoder_cell.zero_state(dynam_batch_size, tf.float32)
+        decoder_cell = tf.nn.rnn_cell.LSTMCell(2*state_size, state_is_tuple=True)
+        decoder_init_state = decoder_cell.zero_state(dynam_batch_size, tf.float32)
     
-    rnn_outputs, final_state = tf.nn.dynamic_rnn(decoder_cell, dec_inputs, initial_state=enc_final_state)
+        rnn_outputs, final_state = tf.nn.dynamic_rnn(decoder_cell, dec_inputs, initial_state=enc_final_state)
 
     #reshape rnn_outputs and y so we can get the logits in a single matmul
-    rnn_outputs = tf.reshape(rnn_outputs, [-1, 2*state_size])
-    y_reshaped = tf.reshape(labels, [-1])
+        rnn_outputs = tf.reshape(rnn_outputs, [-1, 2*state_size])
+        y_reshaped = tf.reshape(labels, [-1])
 
-    logits = tf.matmul(rnn_outputs, W) + b
+        logits = tf.matmul(rnn_outputs, W) + b
 
-    predictions = tf.argmax(logits, axis=1)
+        predictions = tf.argmax(logits, axis=1, name='preds')
 
     total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y_reshaped))
     
@@ -328,7 +328,7 @@ test_Y_data = np.array([np.pad(line, (0, MAX_LEN-len(line)+EDIT_SPACE), 'constan
 
 EPOCHS = 1000
 NUM_IN_BATCH = 100
-CHECKPOINT = "pretrained/bidirectENC-dynamDEC/5-25-2018"
+CHECKPOINT = "pretrained/bidirectENC_dynamDEC/5-25-2018"
 
 with open(CHECKPOINT+"-vocab-dictionaries", 'w') as jsonfile:
     json.dump(vocab_tuple, jsonfile)
