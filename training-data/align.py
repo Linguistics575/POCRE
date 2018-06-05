@@ -318,19 +318,6 @@ class WERCalculator():
             max_lengths = [max(map(len, e)) for e
                            in zip(self.align_ref_elements, self.align_hypothesis_elements)]
 
-            # null_char_list = ['='] * len(
-            #     max_lengths)  # GP EDIT (iterable of '=' to use as fill character for padding below)
-
-            # list of reference elements with padding appropriate for printing
-            padded_ref_elements = list(map(str.ljust,
-                                           self.align_ref_elements,
-                                           max_lengths))
-
-            # list of hypothesis elements with padding appropriate for printing
-            padded_hyp_elements = list(map(str.ljust,
-                                           self.align_hypothesis_elements,
-                                           max_lengths))
-
             # breakpoints that indicate the element that starts a new line.
             # this is so that we can cut the output off at 80 characters so it
             # doesn't run off of the screen
@@ -355,9 +342,6 @@ class WERCalculator():
                 # iterate through the rest and print the lines
                 for start_index, end_index in zip(*[breakpoints[i:]
                                                     for i in range(2)]):
-                    # print(" ".join(padded_ref_elements[start_index:end_index]))
-                    # print(" ".join(padded_hyp_elements[start_index:end_index]))
-                    # print("")
                     ref_line = " ".join(self.align_ref_elements[start_index:end_index])
                     hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
                     print(re.sub(" {2,}", " ", ref_line))  # reduce multiple spaces between tokens to one space
@@ -372,9 +356,6 @@ class WERCalculator():
 
             # and print the last one left in the "buffer", or perhaps the only
             # one that exists
-            # print(" ".join(padded_ref_elements[start_index:]))
-            # print(" ".join(padded_hyp_elements[start_index:]))
-            # print("")
             ref_line = " ".join(self.align_ref_elements[start_index:end_index])
             hyp_line = " ".join(self.align_hypothesis_elements[start_index:end_index])
             print(re.sub(" {2,}", " ", ref_line)) # reduce multiple spaces between tokens to one space
