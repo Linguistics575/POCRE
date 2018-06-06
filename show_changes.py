@@ -225,14 +225,14 @@ def process_single_pair(args):
     assert len(original_lines) == len(edited_lines), "Texts contain different numbers of lines"
 
     open(args.output_file, 'w')
-    
+
     # print header for rich text format; need to do this outside of the foreach loop for lines in the files
     header = r"{\rtf1\ansi\ansicpg1252\cocoartf1404\cocoasubrtf470{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;}" \
              r"{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red255\green0\blue0;}" \
              r"\margl1440\margr1440\vieww11940\viewh7800\viewkind0\pard\tx720\tx1440\tx2160\tx2880\tx3600" \
              r"\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0\f0\fs24 \cf2"
 
-    outf = (args.output_file, 'a')
+    outf = open(args.output_file, 'a')
     outf.write(header)
 
     for i in range(len(original_lines)):
