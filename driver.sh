@@ -1,6 +1,6 @@
 #!/bin/bash
 # run from main "POCRE" directory
-# sample command: sh driver.sh input_file.txt --show_original > output_file 
+# sample command: sh driver.sh input_file.txt output_file --show_original 
 
 # $1 is raw OCR text (system input)
 # $... are flags (--numbered or --show_original)
