@@ -93,7 +93,7 @@ def eval_network(ckpt, idx_to_vocab):
     
 # MAIN
 test_file = sys.argv[1]
-CHECKPOINT = "./pretrained/bidirectENC_dynamDEC/"
+CHECKPOINT = "neural_model/pretrained/bidirectENC_dynamDEC/"
 vocab_idx_file = CHECKPOINT + "5-25-2018-vocab-dictionaries"
 
 idx_vocab = dict()
