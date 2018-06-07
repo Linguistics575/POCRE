@@ -2,19 +2,14 @@
 """
 Created on Thu May  3 11:01:46 2018
 @author: aymm
-Based on tutorial in https://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
-Takes in 2 files as arguments. The first file is the training data, and the second file is the test data. 
-The program reads in the files, builds a neural model based on Tensorflow, dynamically trains on the training data
-in batches for a number of epochs (as determined by the EPOCHS variable), and test the trained model on the test data.
-Data is expected to be in the following format and aligned by character:
-Gold standard line 1
-OCR output line 1
-Gold standard line 2
-OCR output line 2
-...
-Gold standard line x
-OCR output line x
-Note that the program will crash if the data is not aligned by character!
+Initially based on tutorial in https://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html.
+See project wiki for full list of referenced tutorials.
+Takes in 2 files as arguments. The first is a text file that contains a list of training file paths, 
+with each training file path on a separate line, and the second file is the test data. 
+The program reads in the files, builds a seq2seq neural model based on Tensorflow, dynamically trains on the training data
+in batches for a number of epochs (as determined by the EPOCHS variable), and tests the trained model on the test data.
+
+*All data is expected to have been preprocessed by align.py*
 """
 
 import numpy as np
@@ -25,9 +20,9 @@ import os
 import sys
 
 """
-Load and processes data from the given data files. Separates the lines into
-OCR output (X/input data) and gold standard (Y/label data). Prints out the 
-lengths of the datasets make sure sets are properly aligned. Returns the 
+Load and processes data from the given data file. Separates the lines into
+OCR output (X/input data) and gold standard (Y/target output data). Prints out the longest
+line length of the file as a restriction for any future input data. Returns the 
 X and Y sets as matrices and all of the data as a string.
 """
         
@@ -60,10 +55,11 @@ def get_data(file_name):
         
         
 """
-Takes in the X and Y datasets and represents each character in both sets as an integer.
-Note that these are the only characters that the model will be able to predict.
+Takes in the input and target output datasets and represents each unique character in both sets as an integer.
+Note that these are the only characters that the model will be able to predict for any future data.
 Returns dictionaries mapping the characters to the representative integers and the integers
-to the characters, as well as the number of unique characters.
+to the characters, as well as the number of unique characters. A "padding" character is artificially inserted
+for making all of the input lines equal (as required by the neural net).
 """
 def make_train_dict(tr_data):
     vocab = set(tr_data)
@@ -93,7 +89,7 @@ def reset_graph():
 """
 Builds and returns a bidirectional encoder-decoder graph with capabilities for dynamically inputing data
 """
-def build_multilayer_lstm_graph_with_dynamic_rnn(
+def build_bidirectional_graph_with_dynamic_rnn(
     num_classes, 
     state_size = 100,
     embedding_size=256,
@@ -101,6 +97,7 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
     learning_rate = 1e-4):
 
     reset_graph()
+    # Variable scope declaration necessary for recovering pretrained model. DO NOT REMOVE
     with tf.variable_scope('encoder'):
         batch_size = tf.placeholder(tf.int64, name='batch_size')
 
@@ -114,15 +111,17 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
         data_iter = dataset.make_initializable_iterator()
         features, labels = data_iter.get_next()
     
+    # Embeddings convert each integer to a vector representation
         embeddings = tf.get_variable('embedding_matrix', [num_classes, embedding_size])
         rnn_inputs = tf.nn.embedding_lookup(embeddings, features)
         dec_inputs = tf.nn.embedding_lookup(embeddings, labels)
     
-	# ENCODING -----
+	# ENCODING GRAPH-----
 
         fw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
         bw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
-        #cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
+        # TODO: reimplement the hidden layers in the bidirectional encoder
+        # cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
 
         """
         TODO: Test how dropout affects accuracy
@@ -132,6 +131,8 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
         cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=global_dropout)
         """
         
+        # The bidirectional model reads in the input from beginning to end and from end to begninng
+        # and outputs both the forward and back outputs and the forward and backward states.
         dynam_batch_size = tf.shape(features)[0]
         fw_init_state = fw_cell.zero_state(dynam_batch_size, tf.float32)
         bw_init_state = bw_cell.zero_state(dynam_batch_size, tf.float32)
@@ -143,7 +144,9 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
             initial_state_bw=bw_init_state)
 
 
-	# DECODING -----
+	# DECODING GRAPH-----
+    # The forward and backward states need to be decomposed and concatenated into a single state in order to 
+    # feed it into the LSTM decoder. This results in a state size that is twice as large as the encoder state size.
 	# From tutorial https://github.com/ematvey/tensorflow-seq2seq-tutorials/blob/master/2-seq2seq-advanced.ipynb
 
         enc_final_state_c = tf.concat((fw_final_state.c, bw_final_state.c), 1)
@@ -166,6 +169,8 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
 
         logits = tf.matmul(rnn_outputs, W) + b
 
+        # This returns the most likely output for each input. 
+        # TODO: Future implementations may provide the top n predictions.
         predictions = tf.argmax(logits, axis=1, name='preds')
 
     total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y_reshaped))
@@ -189,8 +194,6 @@ def build_multilayer_lstm_graph_with_dynamic_rnn(
         data_iter = data_iter,
         saver = tf.train.Saver()
     )
-    
-
         
         
 
@@ -231,10 +234,9 @@ def train_network(g, save, verbose=True):
     
 
 """
-Takes in the trained model and returns the predicted output of the test data.
-Note that preds is a matrix that is of the shape (test_data, vocab_size), where each
-array is a distribution for each character in the test_data and each index in the array
-is the probability that each character in the training vocabulary is the output. 
+Takes in the trained model and returns the predicted output of the test data. Prints out the test loss.
+Removes the padding at the end of the output and maps the predicted integers back to characters.
+Returns the predicted character output as a string. 
 """
 def eval_network(g, checkpoint, idx_to_vocab):
     with tf.Session() as sess:
@@ -246,8 +248,9 @@ def eval_network(g, checkpoint, idx_to_vocab):
                             g['y']: test_Y_data, 
                             g['batch_size']: len(test_X_data)})
         total_loss, preds = sess.run([g['total_loss'], g['preds']])
-        print(preds)
-        print(preds.shape)
+        # Printing the predictions is useful for debugging but otherwise unnecessary.
+        # print(preds)
+        # print(preds.shape)
         print("Total test loss = ", total_loss)
         pad_idx = np.where(preds==0)
         nopad_preds = np.delete(preds, pad_idx)
@@ -258,7 +261,8 @@ def eval_network(g, checkpoint, idx_to_vocab):
 
 """
 Compares the predicted string and the gold standard string. Returns the 
-error, the total number of characters, and the accuracy.
+error, the total number of characters, and the accuracy. 
+NOTE: calculation is currently inaccurate due to mishandling of string of different lengths
 """
 def char_err_rate(pred, gold):
     total = 0.
@@ -277,7 +281,8 @@ def char_err_rate(pred, gold):
 
             
     
-# MAIN
+# MAIN ----------
+
 train_file = sys.argv[1]
 test_file = sys.argv[2]
 if not os.path.exists(train_file):
@@ -286,11 +291,11 @@ if not os.path.exists(train_file):
 if not os.path.exists(test_file):
     print("CANNOT FIND " + test_file)
     
-
 tr_raw_x = [] 
 tr_raw_y = [] 
 all_tr_data = ""
 tr_max_len = 0 
+
 with open(train_file, 'r') as f_names:
     for name in f_names.readlines():
         print("Getting data from " + name) 
@@ -311,9 +316,13 @@ if test_max_len > tr_max_len:
 idx_vocab, vocab_idx, tr_vocab_size = make_train_dict(all_tr_data)
 vocab_tuple = (idx_vocab, vocab_idx, tr_vocab_size)
 
+# All input arrays are padded to get uniform input
 MAX_LEN = tr_max_len
+
+# Additional space in output for insertions
 EDIT_SPACE= 5
 
+# Character to integer conversion and padding
 tr_X_data = [[vocab_idx[c] for c in arr] for arr in tr_raw_x]
 tr_Y_data = [[vocab_idx[c] for c in arr] for arr in tr_raw_y]
 
@@ -326,15 +335,17 @@ test_Y_data = [[vocab_idx[c] for c in arr] for arr in test_raw_y]
 test_X_data = np.array([np.pad(line, (0, MAX_LEN-len(line)), 'constant', constant_values=0) for line in test_X_data])
 test_Y_data = np.array([np.pad(line, (0, MAX_LEN-len(line)+EDIT_SPACE), 'constant', constant_values=0) for line in test_Y_data])
 
+# Training parameters
 EPOCHS = 1000
 NUM_IN_BATCH = 100
 CHECKPOINT = "pretrained/bidirectENC_dynamDEC/5-25-2018"
 
+# Save dictionaries for future use
 with open(CHECKPOINT+"-vocab-dictionaries", 'w') as jsonfile:
     json.dump(vocab_tuple, jsonfile)
 
 t = time.time()
-graph = build_multilayer_lstm_graph_with_dynamic_rnn(num_classes=tr_vocab_size)
+graph = build_bidirectional_graph_with_dynamic_rnn(num_classes=tr_vocab_size)
 print("It took", time.time() - t, "seconds to build the graph...")
 
 print('Training...')
