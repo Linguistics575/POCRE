@@ -2,19 +2,11 @@
 """
 Created on Thu May  3 11:01:46 2018
 @author: aymm
-Based on tutorial in https://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
-Takes in 2 files as arguments. The first file is the training data, and the second file is the test data. 
-The program reads in the files, builds a neural model based on Tensorflow, dynamically trains on the training data
-in batches for a number of epochs (as determined by the EPOCHS variable), and test the trained model on the test data.
-Data is expected to be in the following format and aligned by character:
-Gold standard line 1
-OCR output line 1
-Gold standard line 2
-OCR output line 2
-...
-Gold standard line x
-OCR output line x
-Note that the program will crash if the data is not aligned by character!
+Takes in a single file as an argument, but assumes that a pretrained model is accessible after having run
+bidirect_enc_dynam_dec.py.
+The program reads in the file, loads the pretrained Tensorflow model, and predicts the output to the given input.
+Predictions will be made by line in the input file. Note that the lines may not be longer than the longest line in 
+the training set. Only prints out the final predicted output.
 """
 
 import numpy as np
@@ -25,10 +17,8 @@ import os
 import sys
 
 """
-Load and processes data from the given data files. Separates the lines into
-OCR output (X/input data) and gold standard (Y/label data). Prints out the 
-lengths of the datasets make sure sets are properly aligned. Returns the 
-X and Y sets.
+Load and processes data from the given data file. Loads the lines as X input and prints the 
+longest line in the file for debugging.
 """
         
 def get_data(file_name):
@@ -45,8 +35,7 @@ def get_data(file_name):
 
     return raw_x
         
-
-    
+ 
 """
 Resets tensorflow for new trained model if one has already been trained.
 """
@@ -58,14 +47,14 @@ def reset_graph():
 
 
 """
-Takes in the trained model and returns the predicted output of the test data.
-Note that preds is a matrix that is of the shape (test_data, vocab_size), where each
-array is a distribution for each character in the test_data and each index in the array
-is the probability that each character in the training vocabulary is the output. 
+Takes in the trained model at the given checkpoint and the premade integer to character dictionary 
+and returns the predicted output of the test data as a string.
 """
 def eval_network(ckpt, idx_to_vocab):
     with tf.Session() as sess:
         ckpt_file = tf.train.latest_checkpoint(ckpt)
+	
+	# Tensorflow methods for restoring the pretrained model from the metagraph
         saver = tf.train.import_meta_graph("{}.meta".format(ckpt_file))
         saver.restore(sess, ckpt_file)
         g = tf.get_default_graph()
@@ -81,9 +70,15 @@ def eval_network(ckpt, idx_to_vocab):
                                        y: test_X_data, 
                                        batch_size: len(test_X_data)})
         preds = g.get_tensor_by_name("decoder/preds:0")
-        output = sess.run(preds)#, feed_dict={x: test_X_data, y: test_Y_data})
+	
+	# Run new data through output
+        output = sess.run(preds)
+	
+	# Remove padding
         idx = np.where(output == 0)
         new_out = np.delete(output, idx)
+	
+	# Convert integers to strings
         mapping = lambda t: idx_to_vocab[str(t)]
         char_func = np.vectorize(mapping)
         chars = char_func(new_out)
@@ -91,7 +86,8 @@ def eval_network(ckpt, idx_to_vocab):
 
             
     
-# MAIN
+# MAIN -----------
+
 test_file = sys.argv[1]
 CHECKPOINT = "neural_model/pretrained/bidirectENC_dynamDEC/"
 vocab_idx_file = CHECKPOINT + "5-25-2018-vocab-dictionaries"
@@ -100,6 +96,7 @@ idx_vocab = dict()
 vocab_idx = dict()
 tr_vocab_size = 0
 
+# Reload saved vocabularies
 with open(vocab_idx_file) as VI_json_file:  
     vocab_tuple = json.load(VI_json_file)
     idx_vocab = vocab_tuple[0]
@@ -109,15 +106,17 @@ with open(vocab_idx_file) as VI_json_file:
 
 test_raw_x = get_data(test_file)
 
+# This is the maximum length that any line in the input data may be
 MAX_LEN = 133
 EDIT_SPACE= 5
 
+# Convert characters to integers
 test_X_data = [[vocab_idx[c] for c in arr] for arr in test_raw_x]
 
+# Add padding 
 test_Y_data = np.array([np.pad(line, (0, MAX_LEN-len(line)+EDIT_SPACE), 'constant', constant_values=0) for line in test_X_data])
 test_X_data = np.array([np.pad(line, (0, MAX_LEN-len(line)), 'constant', constant_values=0) for line in test_X_data])
 
-EPOCHS = 20
 BATCH_SIZE = 100
 
 chars = eval_network(CHECKPOINT, idx_vocab)
