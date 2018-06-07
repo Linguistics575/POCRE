@@ -233,7 +233,7 @@ def process_single_pair(args):
              r"\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0\f0\fs24 \cf2"
 
     outf = open(args.output_file, 'a')
-    outf.write(header)
+    outf.write(header + '\n')
 
     for i in range(len(original_lines)):
         original_words = original_lines[i].split()
@@ -260,8 +260,8 @@ def process_single_pair(args):
             padding = 100 + tags_length
             formatted_line = "{:{padding}}{}".format(formatted_line, original_line, padding=padding)
 
-        outf.write(formatted_line)
-        outf.write("\\")
+        outf.write(formatted_line + '\n')
+        outf.write("\\\n")
 
     outf.write('}')
 
