@@ -21,3 +21,6 @@ output_file.rtf is the destination for the results
 The brackets around --show_original and --numbered indicate that they are optional.
 --show_original will display the input text in a column to the right of the corrected output text.
 --numbered will print line numbers in the left margin of the output file.
+
+## Copyright Notice
+This code is licensed under the MIT License. See LICENSE.txt for more information.
