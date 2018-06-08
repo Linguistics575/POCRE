@@ -5,7 +5,9 @@ The model takes in your data file, and outputs the corrected string directly.
 
 The command line to run the model is:
 
-## python run_pretrained-BE-DD.py your_input_file > your_output_file
+```
+python run_pretrained-BE-DD.py your_input_file > your_output_file
+```
 
 Make sure the the pretrained/bidirectENC_dynamDEC/ folder is in your working directory. No gold standard alignment is needed and no evaluation metrics are printed by this script. The only restriction on the input file is that the lines must not be longer than 133 characters for the pretrained model.
 
