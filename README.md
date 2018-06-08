@@ -24,3 +24,6 @@ The brackets around --show_original and --numbered indicate that they are option
 
 ## Copyright Notice
 This code is licensed under the MIT License. See LICENSE.txt for more information.
+
+## Issues
+See https://github.com/Linguistics575/POCRE/wiki/Technical-Documentation for details about current issues and future work.
