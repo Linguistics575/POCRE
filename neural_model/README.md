@@ -7,7 +7,7 @@ The command line to run the model is:
 
 ## python run_pretrained-BE-DD.py your_input_file > your_output_file
 
-Make sure the the pretrained/ folder is in your working directory. No gold standard alignment is needed and no evaluation metrics are printed by this script. The only restriction on the input file is that the lines must not be longer than 133 characters for the pretrained model.
+Make sure the the pretrained/bidirectENC_dynamDEC/ folder is in your working directory. No gold standard alignment is needed and no evaluation metrics are printed by this script. The only restriction on the input file is that the lines must not be longer than 133 characters for the pretrained model.
 
 # How To Train Your Model
 This encoder decoder neural network model for post OCR correction is based on tensorflow.
