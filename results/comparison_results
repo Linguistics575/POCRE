@@ -1,0 +1,26 @@
+SYSTEM		PAGE		change
+LIOS		52		original: CER	1.13 WER	2.59 WER (order independent)	2.59
+				corrected: CER	1.13 WER	2.85 WER (order independent)	2.59
+		51		both: CER	0.65 WER	1.69 WER (order independent)	1.39
+		50		both: CER	0.99 WER	3.32 WER (order independent)	2.89
+		49		both: CER	0.92 WER	2.51 WER (order independent)	2.37
+		48		original: CER	1.01 WER	2.68 WER (order independent)	2.40
+				corrected: CER	1.01 WER	2.96 WER (order independent)	2.40
+		47		original: CER	1.01 WER	2.34 WER (order independent)	2.34
+				corrected: CER	1.01 WER	2.99 WER (order independent)	2.21
+		36		original: CER	0.89 WER	2.19 WER (order independent)	2.06
+				corrected: CER	0.89 WER	2.32 WER (order independent)	2.06
+ABBYY		54		both: CER	0.30 WER	1.19 WER (order independent)	1.19
+		52		both: CER	0.02 WER	0.13 WER (order independent)	0.13
+		48		both: CER	0.08 WER	0.14 WER (order independent)	0.14
+		47		both: CER	0.05 WER	0.13 WER (order independent)	0.13
+		46		both: CER	0.27 WER	0.72 WER (order independent)	0.57
+		45		both: CER	0.12 WER	0.26 WER (order independent)	0.26
+		44		both: CER	0.05 WER	0.13 WER (order independent)	0.13
+		43		both: CER	0.16 WER	0.39 WER (order independent)	0.39
+
+
+
+# None of the Azure data ran through the ocrevaluation tool we used to get the files in the results/ directory, so no results for those.
+
+# ALSO on LIOS 46, ABBYY 53
